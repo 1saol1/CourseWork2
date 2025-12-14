@@ -168,69 +168,49 @@ public class Coursework extends JFrame {
 
     private void runOneWayMergeSort() throws IOException {
         updateStatus("One-Way: запуск...");
-        String inputFile1 = "large_file1.txt";
-        String inputFile2 = "large_file2.txt";
+        String inputFile = "large_file.txt";  // Один файл для обеих сортировок
         String outputFile = "sorted_one_way.txt";
 
 
-        updateOneWayProgress(0, "Разделение файлов...");
-        List<File> chunks1 = splitAndSortFilesOneWay(inputFile1, "chunk1_", 0, 40);
-        updateOneWayProgress(20, "Первый файл разделен");
-
-        List<File> chunks2 = splitAndSortFilesOneWay(inputFile2, "chunk2_", 20, 20);
-        updateOneWayProgress(40, "Второй файл разделен");
+        updateOneWayProgress(0, "One-Way: разделение файла...");
+        List<File> chunks = splitAndSortFiles(inputFile, "chunk1_", 0, 50, true);
+        updateOneWayProgress(50, "One-Way: файл разделен на " + chunks.size() + " чанков");
 
 
-        updateOneWayProgress(40, "Начало слияния...");
-        oneWayMergeSortWithProgress(chunks1, chunks2, outputFile, 40, 60);
+        updateOneWayProgress(50, "One-Way: начало слияния...");
+        oneWayMergeSortWithProgress(chunks, outputFile, 50, 50);
 
-        cleanupTempFiles(chunks1);
-        cleanupTempFiles(chunks2);
-
+        cleanupTempFiles(chunks);
         updateOneWayProgress(100, "One-Way завершен!");
         updateOneWayTimeLabel();
     }
 
     private void runKWayMergeSort() throws IOException {
         updateStatus("K-Way: запуск...");
-        String inputFile1 = "large_file1.txt";
-        String inputFile2 = "large_file2.txt";
+        String inputFile = "large_file.txt";
         String outputFile = "sorted_k_way.txt";
 
 
-        updateKWayProgress(0, "Разделение файлов...");
-        List<File> chunks1 = splitAndSortFilesKWay(inputFile1, "chunk3_", 0, 40);
-        updateKWayProgress(20, "Первый файл разделен");
-
-        List<File> chunks2 = splitAndSortFilesKWay(inputFile2, "chunk4_", 20, 20);
-        updateKWayProgress(40, "Второй файл разделен");
+        updateKWayProgress(0, "K-Way: разделение файла...");
+        List<File> chunks = splitAndSortFiles(inputFile, "chunk2_", 0, 50, false);
+        updateKWayProgress(50, "K-Way: файл разделен на " + chunks.size() + " чанков");
 
 
-        updateKWayProgress(40, "Начало K-Way слияния...");
-        kWayMergeSortWithProgress(chunks1, chunks2, outputFile, 40, 60);
+        updateKWayProgress(50, "K-Way: начало многопутевого слияния...");
+        kWayMergeSortWithProgress(chunks, outputFile, 50, 50);
 
-        cleanupTempFiles(chunks1);
-        cleanupTempFiles(chunks2);
-
+        cleanupTempFiles(chunks);
         updateKWayProgress(100, "K-Way завершен!");
         updateKWayTimeLabel();
-    }
-
-    private List<File> splitAndSortFilesOneWay(String inputFile, String chunkPrefix,
-                                               int progressStart, int progressRange) throws IOException {
-        return splitAndSortFiles(inputFile, chunkPrefix, progressStart, progressRange, true);
-    }
-
-    private List<File> splitAndSortFilesKWay(String inputFile, String chunkPrefix,
-                                             int progressStart, int progressRange) throws IOException {
-        return splitAndSortFiles(inputFile, chunkPrefix, progressStart, progressRange, false);
     }
 
     private List<File> splitAndSortFiles(String inputFile, String chunkPrefix,
                                          int progressStart, int progressRange, boolean isOneWay) throws IOException {
         File file = new File(inputFile);
         List<File> tempFiles = new ArrayList<>();
+
         if (!file.exists()) {
+            updateStatus("ОШИБКА: Файл не найден - " + inputFile);
             return tempFiles;
         }
 
@@ -261,9 +241,18 @@ public class Coursework extends JFrame {
                 } else {
                     File tempFile = createSortedTempFile(chunk, chunkPrefix + count++);
                     tempFiles.add(tempFile);
+
+
                     chunk.clear();
                     chunk.add(line);
                     currentChunkSize = lineSize;
+
+
+                    if (isOneWay) {
+                        updateOneWayProgress(progress, "One-Way: создан чанк " + (count-1));
+                    } else {
+                        updateKWayProgress(progress, "K-Way: создан чанк " + (count-1));
+                    }
                 }
 
                 updateTimeLabel();
@@ -274,61 +263,73 @@ public class Coursework extends JFrame {
                 }
             }
 
+
             if (!chunk.isEmpty()) {
                 File tempFile = createSortedTempFile(chunk, chunkPrefix + count);
                 tempFiles.add(tempFile);
+
+                if (isOneWay) {
+                    updateOneWayProgress(progressStart + progressRange, "One-Way: создан финальный чанк");
+                } else {
+                    updateKWayProgress(progressStart + progressRange, "K-Way: создан финальный чанк");
+                }
             }
         }
 
         return tempFiles;
     }
 
-    private void oneWayMergeSortWithProgress(List<File> chunks1, List<File> chunks2,
-                                             String outputFile, int progressStart, int progressRange) throws IOException {
-        List<File> allChunks = new ArrayList<>();
-        allChunks.addAll(chunks1);
-        allChunks.addAll(chunks2);
+    private void oneWayMergeSortWithProgress(List<File> chunks, String outputFile,
+                                             int progressStart, int progressRange) throws IOException {
+        if (chunks.isEmpty()) {
+            return;
+        }
 
-        int totalMerges = allChunks.size() - 1;
+        List<File> currentFiles = new ArrayList<>(chunks);
+        int totalMerges = currentFiles.size() - 1;
         int completedMerges = 0;
         int stage = 1;
 
-        while (allChunks.size() > 1) {
+        while (currentFiles.size() > 1) {
             updateOneWayProgress(progressStart + (completedMerges * progressRange) / totalMerges,
-                    "One-Way: этап " + stage);
+                    "One-Way: этап " + stage + " (файлов: " + currentFiles.size() + ")");
 
-            List<File> mergedChunks = new ArrayList<>();
-            for (int i = 0; i < allChunks.size(); i += 2) {
-                if (i + 1 < allChunks.size()) {
-                    File mergedFile = mergeTwoFiles(allChunks.get(i), allChunks.get(i + 1),
-                            "one_way_temp_" + System.currentTimeMillis());
-                    mergedChunks.add(mergedFile);
+            List<File> mergedFiles = new ArrayList<>();
+            for (int i = 0; i < currentFiles.size(); i += 2) {
+                if (i + 1 < currentFiles.size()) {
+
+                    File mergedFile = mergeTwoFiles(currentFiles.get(i), currentFiles.get(i + 1),
+                            "one_way_temp_" + stage + "_" + i);
+                    mergedFiles.add(mergedFile);
                     completedMerges++;
                 } else {
-                    mergedChunks.add(allChunks.get(i));
+
+                    mergedFiles.add(currentFiles.get(i));
                 }
 
                 updateOneWayProgress(progressStart + (completedMerges * progressRange) / totalMerges,
                         "One-Way: слияние " + completedMerges + "/" + totalMerges);
                 updateOneWayTimeLabel();
             }
-            allChunks = mergedChunks;
+            currentFiles = mergedFiles;
             stage++;
         }
 
-        if (!allChunks.isEmpty()) {
-            Files.move(allChunks.get(0).toPath(), Paths.get(outputFile), StandardCopyOption.REPLACE_EXISTING);
+
+        if (!currentFiles.isEmpty()) {
+            Files.move(currentFiles.get(0).toPath(), Paths.get(outputFile), StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
-    private void kWayMergeSortWithProgress(List<File> chunks1, List<File> chunks2,
-                                           String outputFile, int progressStart, int progressRange) throws IOException {
-        List<File> allChunks = new ArrayList<>();
-        allChunks.addAll(chunks1);
-        allChunks.addAll(chunks2);
+    private void kWayMergeSortWithProgress(List<File> chunks, String outputFile,
+                                           int progressStart, int progressRange) throws IOException {
+        if (chunks.isEmpty()) {
+            return;
+        }
 
-        if (allChunks.size() == 1) {
-            Files.copy(allChunks.get(0).toPath(), Paths.get(outputFile), StandardCopyOption.REPLACE_EXISTING);
+        if (chunks.size() == 1) {
+
+            Files.copy(chunks.get(0).toPath(), Paths.get(outputFile), StandardCopyOption.REPLACE_EXISTING);
             updateKWayProgress(100);
             return;
         }
@@ -338,17 +339,20 @@ public class Coursework extends JFrame {
 
         try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(outputFile))) {
 
-            for (File file : allChunks) {
+            for (File file : chunks) {
                 BufferedReader reader = new BufferedReader(new FileReader(file));
                 readers.add(reader);
+
                 String firstLine = reader.readLine();
                 if (firstLine != null) {
                     pq.offer(new FileLine(firstLine, reader));
                 }
             }
 
-            long totalLines = estimateTotalLines(allChunks);
+            long totalLines = estimateTotalLines(chunks);
             long processedLines = 0;
+
+            updateKWayProgress(progressStart, "K-Way: начало слияния " + chunks.size() + " чанков");
 
 
             while (!pq.isEmpty()) {
@@ -360,16 +364,21 @@ public class Coursework extends JFrame {
 
                 if (processedLines % 10000 == 0) {
                     int progress = progressStart + (int)((processedLines * progressRange) / totalLines);
-                    updateKWayProgress(progress);
+                    updateKWayProgress(progress,
+                            "K-Way: обработано " + processedLines + "/" + totalLines + " строк");
                     updateKWayTimeLabel();
                 }
+
 
                 String nextLine = minLine.reader.readLine();
                 if (nextLine != null) {
                     pq.offer(new FileLine(nextLine, minLine.reader));
                 }
             }
+
+            updateKWayProgress(progressStart + progressRange, "K-Way: слияние завершено");
         } finally {
+
             for (BufferedReader reader : readers) {
                 try {
                     reader.close();
@@ -381,26 +390,33 @@ public class Coursework extends JFrame {
     }
 
     private File createSortedTempFile(List<String> chunk, String filename) throws IOException {
+
         Collections.sort(chunk, String.CASE_INSENSITIVE_ORDER);
+
         File tempFile = File.createTempFile(filename, ".tmp");
         tempFile.deleteOnExit();
+
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
             for (String line : chunk) {
                 writer.write(line);
                 writer.newLine();
             }
         }
+
         return tempFile;
     }
 
     private File mergeTwoFiles(File file1, File file2, String tempName) throws IOException {
         File tempFile = File.createTempFile(tempName, ".tmp");
         tempFile.deleteOnExit();
+
         try (BufferedReader reader1 = new BufferedReader(new FileReader(file1));
              BufferedReader reader2 = new BufferedReader(new FileReader(file2));
              BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
+
             String line1 = reader1.readLine();
             String line2 = reader2.readLine();
+
             while (line1 != null && line2 != null) {
                 if (line1.compareTo(line2) <= 0) {
                     writer.write(line1);
@@ -412,19 +428,26 @@ public class Coursework extends JFrame {
                     line2 = reader2.readLine();
                 }
             }
+
+
             while (line1 != null) {
                 writer.write(line1);
                 writer.newLine();
                 line1 = reader1.readLine();
             }
+
+
             while (line2 != null) {
                 writer.write(line2);
                 writer.newLine();
                 line2 = reader2.readLine();
             }
         }
+
+
         file1.delete();
         file2.delete();
+
         return tempFile;
     }
 
@@ -441,9 +464,13 @@ public class Coursework extends JFrame {
     }
 
     private void cleanupTempFiles(List<File> tempFiles) {
+        int deletedCount = 0;
         for (File file : tempFiles) {
-            file.delete();
+            if (file.delete()) {
+                deletedCount++;
+            }
         }
+
     }
 
     private int getMemorySize(String line) {
@@ -453,10 +480,12 @@ public class Coursework extends JFrame {
     static class FileLine implements Comparable<FileLine> {
         String line;
         BufferedReader reader;
+
         FileLine(String line, BufferedReader reader) {
             this.line = line;
             this.reader = reader;
         }
+
         @Override
         public int compareTo(FileLine other) {
             return this.line.compareToIgnoreCase(other.line);
