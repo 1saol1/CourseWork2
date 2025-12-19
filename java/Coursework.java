@@ -1,4 +1,5 @@
 import javax.swing.*;
+import javax.swing.filechooser.FileView;
 import java.awt.*;
 import java.io.*;
 import java.nio.file.*;
@@ -17,6 +18,7 @@ public class Coursework extends JFrame {
     private JLabel replacementTimeLabel;
     private JLabel bucketTimeLabel;
     private JButton startButton;
+    private String selectedFilePath;
 
     private long startTime;
     private long oneWayStartTime;
@@ -29,11 +31,113 @@ public class Coursework extends JFrame {
     private static final int REPLACEMENT_BUFFER_SIZE = 100000;
 
     public Coursework() {
+        if (!showFileSelectionDialog()) {
+            System.exit(0);
+        }
         initializeGUI();
     }
 
+    private boolean showFileSelectionDialog() {
+        JDialog fileDialog = new JDialog((Frame) null, "Выбор файла для сортировки", true);
+        fileDialog.setLayout(new BorderLayout(10, 10));
+        fileDialog.setResizable(false);
+
+        JPanel instructionPanel = new JPanel();
+        instructionPanel.add(new JLabel("Пожалуйста, выберите файл для сортировки:"));
+
+        JPanel filePanel = new JPanel();
+        filePanel.setLayout(new BoxLayout(filePanel, BoxLayout.Y_AXIS));
+        filePanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JButton selectButton = new JButton("Выбрать файл");
+        selectButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        selectButton.setPreferredSize(new Dimension(200, 30));
+        selectButton.setMaximumSize(new Dimension(200, 30));
+
+        JTextField pathField = new JTextField(30);
+        pathField.setEditable(false);
+        pathField.setAlignmentX(Component.CENTER_ALIGNMENT);
+        pathField.setMaximumSize(new Dimension(400, 25));
+
+        JButton confirmButton = new JButton("Начать сортировку");
+        confirmButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        confirmButton.setPreferredSize(new Dimension(200, 30));
+        confirmButton.setMaximumSize(new Dimension(200, 30));
+        confirmButton.setEnabled(false);
+
+        filePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        filePanel.add(selectButton);
+        filePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        filePanel.add(new JLabel("Выбранный файл:"));
+        filePanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        filePanel.add(pathField);
+        filePanel.add(Box.createRigidArea(new Dimension(0, 20)));
+        filePanel.add(confirmButton);
+        filePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+
+        selectButton.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Выберите файл для сортировки");
+            fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+
+            fileChooser.setFileView(new FileView() {
+                @Override
+                public String getName(File f) {
+                    return null;
+                }
+
+                @Override
+                public String getDescription(File f) {
+                    return null;
+                }
+
+                @Override
+                public Boolean isTraversable(File f) {
+                    return null;
+                }
+            });
+
+            int result = fileChooser.showOpenDialog(fileDialog);
+            if (result == JFileChooser.APPROVE_OPTION) {
+                File selectedFile = fileChooser.getSelectedFile();
+                selectedFilePath = selectedFile.getAbsolutePath();
+                pathField.setText(selectedFile.getName());
+                confirmButton.setEnabled(true);
+            }
+        });
+
+        confirmButton.addActionListener(e -> {
+            if (selectedFilePath != null) {
+                fileDialog.dispose();
+            }
+        });
+
+        fileDialog.add(instructionPanel, BorderLayout.NORTH);
+        fileDialog.add(filePanel, BorderLayout.CENTER);
+
+        fileDialog.pack();
+        fileDialog.setLocationRelativeTo(null);
+        fileDialog.setVisible(true);
+
+        return selectedFilePath != null;
+    }
+
+    private String getOutputFilePath(String suffix) {
+        if (selectedFilePath == null) {
+            return "sorted_" + suffix + ".txt";
+        }
+
+        File inputFile = new File(selectedFilePath);
+        String parentDir = inputFile.getParent();
+        String fileName = inputFile.getName();
+        String baseName = fileName.contains(".") ?
+                fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+
+        return parentDir + File.separator + baseName + "_sorted_" + suffix + ".txt";
+    }
+
     private void initializeGUI() {
-        setTitle("Сравнение сортировок - One-Way vs K-Way vs Replacement Selection vs Bucket Sort");
+        setTitle("Сравнение алгоритмов сортировки - " + new File(selectedFilePath).getName());
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
         setResizable(false);
@@ -97,7 +201,7 @@ public class Coursework extends JFrame {
         bucketPanel.add(bucketTimeLabel, BorderLayout.SOUTH);
 
         JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        statusLabel = new JLabel("Готов к работе");
+        statusLabel = new JLabel("Готов к работе. Файл: " + new File(selectedFilePath).getName());
         statusLabel.setFont(new Font("Arial", Font.BOLD, 12));
         timeLabel = new JLabel("Общее время: 0 сек");
         timeLabel.setFont(new Font("Arial", Font.PLAIN, 12));
@@ -206,15 +310,71 @@ public class Coursework extends JFrame {
                 startButton.setEnabled(true);
                 updateStatus("Все сортировки завершены!");
                 updateTimeLabel();
+
+                JOptionPane.showMessageDialog(Coursework.this,
+                        "Все сортировки успешно завершены!\nРезультаты сохранены в той же директории, что и исходный файл.",
+                        "Сортировка завершена",
+                        JOptionPane.INFORMATION_MESSAGE);
             }
         };
         worker.execute();
     }
 
+    private void runOneWayMergeSort() throws IOException {
+        updateStatus("One-Way: запуск...");
+        String inputFile = selectedFilePath;
+        String outputFile = getOutputFilePath("one_way");
+
+        updateOneWayProgress(0, "One-Way: разделение файла...");
+        List<File> chunks = splitAndSortFiles(inputFile, "chunk1_", 0, 50, true);
+        updateOneWayProgress(50, "One-Way: файл разделен на " + chunks.size() + " чанков");
+
+        updateOneWayProgress(50, "One-Way: начало слияния...");
+        oneWayMergeSortWithProgress(chunks, outputFile, 50, 50);
+
+        cleanupTempFiles(chunks);
+        updateOneWayProgress(100, "One-Way завершен!");
+        updateOneWayTimeLabel();
+    }
+
+    private void runKWayMergeSort() throws IOException {
+        updateStatus("K-Way: запуск...");
+        String inputFile = selectedFilePath;
+        String outputFile = getOutputFilePath("k_way");
+
+        updateKWayProgress(0, "K-Way: разделение файла...");
+        List<File> chunks = splitAndSortFiles(inputFile, "chunk2_", 0, 50, false);
+        updateKWayProgress(50, "K-Way: файл разделен на " + chunks.size() + " чанков");
+
+        updateKWayProgress(50, "K-Way: начало многопутевого слияния...");
+        kWayMergeSortWithProgress(chunks, outputFile, 50, 50);
+
+        cleanupTempFiles(chunks);
+        updateKWayProgress(100, "K-Way завершен!");
+        updateKWayTimeLabel();
+    }
+
+    private void runReplacementSelectionSort() throws IOException {
+        updateStatus("Replacement Selection: запуск...");
+        String inputFile = selectedFilePath;
+        String outputFile = getOutputFilePath("replacement");
+
+        updateReplacementProgress(0, "Replacement: создание серий...");
+        List<File> series = replacementSelectionSort(inputFile, "replacement_");
+        updateReplacementProgress(60, "Replacement: создано " + series.size() + " серий");
+
+        updateReplacementProgress(60, "Replacement: слияние серий...");
+        kWayMergeSortWithProgress(series, outputFile, 60, 40);
+
+        cleanupTempFiles(series);
+        updateReplacementProgress(100, "Replacement Selection завершен!");
+        updateReplacementTimeLabel();
+    }
+
     private void runBucketSort() throws IOException {
         updateStatus("Bucket Sort: запуск...");
-        String inputFile = "large_file.txt";
-        String outputFile = "sorted_bucket.txt";
+        String inputFile = selectedFilePath;
+        String outputFile = getOutputFilePath("bucket");
 
         updateBucketProgress(0, "Bucket Sort: анализ данных...");
 
@@ -367,27 +527,6 @@ public class Coursework extends JFrame {
         }
     }
 
-    private long estimateTotalLines(List<File> files) throws IOException {
-        long total = 0;
-        for (File file : files) {
-            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-                while (reader.readLine() != null) {
-                    total++;
-                }
-            }
-        }
-        return total;
-    }
-
-    private void cleanupTempFiles(List<File> tempFiles) {
-        int deletedCount = 0;
-        for (File file : tempFiles) {
-            if (file.delete()) {
-                deletedCount++;
-            }
-        }
-    }
-
     private void updateBucketProgress(int value, String status) {
         SwingUtilities.invokeLater(() -> {
             bucketProgressBar.setValue(value);
@@ -408,57 +547,6 @@ public class Coursework extends JFrame {
                 bucketTimeLabel.setText("Время: " + elapsed + " сек");
             });
         }
-    }
-
-    private void runOneWayMergeSort() throws IOException {
-        updateStatus("One-Way: запуск...");
-        String inputFile = "large_file.txt";
-        String outputFile = "sorted_one_way.txt";
-
-        updateOneWayProgress(0, "One-Way: разделение файла...");
-        List<File> chunks = splitAndSortFiles(inputFile, "chunk1_", 0, 50, true);
-        updateOneWayProgress(50, "One-Way: файл разделен на " + chunks.size() + " чанков");
-
-        updateOneWayProgress(50, "One-Way: начало слияния...");
-        oneWayMergeSortWithProgress(chunks, outputFile, 50, 50);
-
-        cleanupTempFiles(chunks);
-        updateOneWayProgress(100, "One-Way завершен!");
-        updateOneWayTimeLabel();
-    }
-
-    private void runKWayMergeSort() throws IOException {
-        updateStatus("K-Way: запуск...");
-        String inputFile = "large_file.txt";
-        String outputFile = "sorted_k_way.txt";
-
-        updateKWayProgress(0, "K-Way: разделение файла...");
-        List<File> chunks = splitAndSortFiles(inputFile, "chunk2_", 0, 50, false);
-        updateKWayProgress(50, "K-Way: файл разделен на " + chunks.size() + " чанков");
-
-        updateKWayProgress(50, "K-Way: начало многопутевого слияния...");
-        kWayMergeSortWithProgress(chunks, outputFile, 50, 50);
-
-        cleanupTempFiles(chunks);
-        updateKWayProgress(100, "K-Way завершен!");
-        updateKWayTimeLabel();
-    }
-
-    private void runReplacementSelectionSort() throws IOException {
-        updateStatus("Replacement Selection: запуск...");
-        String inputFile = "large_file.txt";
-        String outputFile = "sorted_replacement.txt";
-
-        updateReplacementProgress(0, "Replacement: создание серий...");
-        List<File> series = replacementSelectionSort(inputFile, "replacement_");
-        updateReplacementProgress(60, "Replacement: создано " + series.size() + " серий");
-
-        updateReplacementProgress(60, "Replacement: слияние серий...");
-        kWayMergeSortWithProgress(series, outputFile, 60, 40);
-
-        cleanupTempFiles(series);
-        updateReplacementProgress(100, "Replacement Selection завершен!");
-        updateReplacementTimeLabel();
     }
 
     private List<File> replacementSelectionSort(String inputFile, String prefix) throws IOException {
@@ -767,6 +855,27 @@ public class Coursework extends JFrame {
         file2.delete();
 
         return tempFile;
+    }
+
+    private long estimateTotalLines(List<File> files) throws IOException {
+        long total = 0;
+        for (File file : files) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                while (reader.readLine() != null) {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    private void cleanupTempFiles(List<File> tempFiles) {
+        int deletedCount = 0;
+        for (File file : tempFiles) {
+            if (file.delete()) {
+                deletedCount++;
+            }
+        }
     }
 
     private int getMemorySize(String line) {
