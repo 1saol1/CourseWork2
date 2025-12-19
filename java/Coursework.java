@@ -1,4 +1,3 @@
-
 import javax.swing.*;
 import java.awt.*;
 import java.io.*;
@@ -10,17 +9,20 @@ public class Coursework extends JFrame {
     private JProgressBar oneWayProgressBar;
     private JProgressBar kWayProgressBar;
     private JProgressBar replacementProgressBar;
+    private JProgressBar bucketProgressBar;
     private JLabel statusLabel;
     private JLabel timeLabel;
     private JLabel oneWayTimeLabel;
     private JLabel kWayTimeLabel;
     private JLabel replacementTimeLabel;
+    private JLabel bucketTimeLabel;
     private JButton startButton;
 
     private long startTime;
     private long oneWayStartTime;
     private long kWayStartTime;
     private long replacementStartTime;
+    private long bucketStartTime;
     private volatile boolean isRunning = false;
 
     private static final int MAX_MEMORY_SIZE = 250 * 1024 * 1024;
@@ -31,15 +33,13 @@ public class Coursework extends JFrame {
     }
 
     private void initializeGUI() {
-        setTitle("Сравнение сортировок - One-Way vs K-Way vs Replacement Selection");
+        setTitle("Сравнение сортировок - One-Way vs K-Way vs Replacement Selection vs Bucket Sort");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
         setResizable(false);
 
-
         JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
-
 
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
         controlPanel.setBorder(BorderFactory.createTitledBorder("Управление сортировкой"));
@@ -49,9 +49,8 @@ public class Coursework extends JFrame {
         startButton.setPreferredSize(new Dimension(180, 35));
         controlPanel.add(startButton);
 
-        JPanel progressPanel = new JPanel(new GridLayout(5, 1, 8, 8));
+        JPanel progressPanel = new JPanel(new GridLayout(6, 1, 8, 8));
         progressPanel.setBorder(BorderFactory.createTitledBorder("Прогресс выполнения"));
-
 
         JPanel oneWayPanel = new JPanel(new BorderLayout(5, 5));
         oneWayPanel.add(new JLabel("One-Way Merge Sort:"), BorderLayout.NORTH);
@@ -64,7 +63,6 @@ public class Coursework extends JFrame {
         oneWayTimeLabel.setFont(new Font("Arial", Font.PLAIN, 11));
         oneWayPanel.add(oneWayTimeLabel, BorderLayout.SOUTH);
 
-
         JPanel kWayPanel = new JPanel(new BorderLayout(5, 5));
         kWayPanel.add(new JLabel("K-Way Merge Sort:"), BorderLayout.NORTH);
         kWayProgressBar = new JProgressBar(0, 100);
@@ -75,7 +73,6 @@ public class Coursework extends JFrame {
         kWayTimeLabel = new JLabel("Время: 0 сек");
         kWayTimeLabel.setFont(new Font("Arial", Font.PLAIN, 11));
         kWayPanel.add(kWayTimeLabel, BorderLayout.SOUTH);
-
 
         JPanel replacementPanel = new JPanel(new BorderLayout(5, 5));
         replacementPanel.add(new JLabel("Replacement Selection Sort:"), BorderLayout.NORTH);
@@ -88,6 +85,16 @@ public class Coursework extends JFrame {
         replacementTimeLabel.setFont(new Font("Arial", Font.PLAIN, 11));
         replacementPanel.add(replacementTimeLabel, BorderLayout.SOUTH);
 
+        JPanel bucketPanel = new JPanel(new BorderLayout(5, 5));
+        bucketPanel.add(new JLabel("Bucket Sort:"), BorderLayout.NORTH);
+        bucketProgressBar = new JProgressBar(0, 100);
+        bucketProgressBar.setStringPainted(true);
+        bucketProgressBar.setForeground(new Color(150, 0, 150));
+        bucketProgressBar.setPreferredSize(new Dimension(400, 20));
+        bucketPanel.add(bucketProgressBar, BorderLayout.CENTER);
+        bucketTimeLabel = new JLabel("Время: 0 сек");
+        bucketTimeLabel.setFont(new Font("Arial", Font.PLAIN, 11));
+        bucketPanel.add(bucketTimeLabel, BorderLayout.SOUTH);
 
         JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         statusLabel = new JLabel("Готов к работе");
@@ -99,17 +106,16 @@ public class Coursework extends JFrame {
         infoPanel.add(new JSeparator(SwingConstants.VERTICAL));
         infoPanel.add(timeLabel);
 
-
         progressPanel.add(oneWayPanel);
         progressPanel.add(kWayPanel);
         progressPanel.add(replacementPanel);
+        progressPanel.add(bucketPanel);
         progressPanel.add(infoPanel);
 
         mainPanel.add(controlPanel, BorderLayout.NORTH);
         mainPanel.add(progressPanel, BorderLayout.CENTER);
 
         add(mainPanel, BorderLayout.CENTER);
-
 
         startButton.addActionListener(e -> startSorting());
 
@@ -124,14 +130,14 @@ public class Coursework extends JFrame {
         startButton.setEnabled(false);
         isRunning = true;
 
-
         oneWayProgressBar.setValue(0);
         kWayProgressBar.setValue(0);
         replacementProgressBar.setValue(0);
+        bucketProgressBar.setValue(0);
         oneWayTimeLabel.setText("Время: 0 сек");
         kWayTimeLabel.setText("Время: 0 сек");
         replacementTimeLabel.setText("Время: 0 сек");
-
+        bucketTimeLabel.setText("Время: 0 сек");
 
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             @Override
@@ -140,10 +146,10 @@ public class Coursework extends JFrame {
                 oneWayStartTime = 0;
                 kWayStartTime = 0;
                 replacementStartTime = 0;
+                bucketStartTime = 0;
 
                 updateStatus("Запуск всех сортировок...");
                 updateTimeLabel();
-
 
                 Thread oneWayThread = new Thread(() -> {
                     try {
@@ -172,14 +178,24 @@ public class Coursework extends JFrame {
                     }
                 });
 
+                Thread bucketThread = new Thread(() -> {
+                    try {
+                        bucketStartTime = System.currentTimeMillis();
+                        runBucketSort();
+                    } catch (IOException e) {
+                        updateStatus("Ошибка в Bucket сортировке: " + e.getMessage());
+                    }
+                });
+
                 oneWayThread.start();
                 kWayThread.start();
                 replacementThread.start();
-
+                bucketThread.start();
 
                 oneWayThread.join();
                 kWayThread.join();
                 replacementThread.join();
+                bucketThread.join();
 
                 return null;
             }
@@ -195,16 +211,213 @@ public class Coursework extends JFrame {
         worker.execute();
     }
 
+    private void runBucketSort() throws IOException {
+        updateStatus("Bucket Sort: запуск...");
+        String inputFile = "large_file.txt";
+        String outputFile = "sorted_bucket.txt";
+
+        updateBucketProgress(0, "Bucket Sort: анализ данных...");
+
+        int maxValue = findMaxValue(inputFile);
+        if (maxValue == -1) {
+            updateStatus("Bucket Sort: файл не найден или пуст");
+            return;
+        }
+
+        updateBucketProgress(20, "Bucket Sort: распределение по корзинам...");
+        List<File> bucketFiles = distributeToBuckets(inputFile, maxValue);
+
+        updateBucketProgress(50, "Bucket Sort: сортировка корзин...");
+        sortAllBuckets(bucketFiles);
+
+        updateBucketProgress(80, "Bucket Sort: объединение корзин...");
+        mergeBucketsToFile(bucketFiles, outputFile);
+
+        updateBucketProgress(95, "Bucket Sort: очистка временных файлов...");
+        cleanupTempFiles(bucketFiles);
+
+        updateBucketProgress(100, "Bucket Sort завершен!");
+        updateBucketTimeLabel();
+    }
+
+    private int findMaxValue(String inputFile) throws IOException {
+        File file = new File(inputFile);
+        if (!file.exists()) {
+            return -1;
+        }
+
+        int max = 0;
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                try {
+                    int value = Integer.parseInt(line.trim());
+                    if (value > max) max = value;
+                } catch (NumberFormatException e) {
+                }
+            }
+        }
+        return max;
+    }
+
+    private List<File> distributeToBuckets(String inputFile, int maxValue) throws IOException {
+        final int BUCKET_COUNT = 32;
+        List<File> bucketFiles = new ArrayList<>();
+        List<BufferedWriter> writers = new ArrayList<>();
+
+        for (int i = 0; i < BUCKET_COUNT; i++) {
+            File bucketFile = File.createTempFile("bucket_" + i, ".tmp");
+            bucketFile.deleteOnExit();
+            bucketFiles.add(bucketFile);
+            writers.add(new BufferedWriter(new FileWriter(bucketFile)));
+        }
+
+        File file = new File(inputFile);
+        long fileSize = file.length();
+        long processedBytes = 0;
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+
+                processedBytes += line.getBytes().length + 1;
+
+                try {
+                    int value = Integer.parseInt(line.trim());
+                    int bucketIndex = (value * BUCKET_COUNT) / (maxValue + 1);
+                    if (bucketIndex >= BUCKET_COUNT) bucketIndex = BUCKET_COUNT - 1;
+
+                    writers.get(bucketIndex).write(value + "\n");
+                } catch (NumberFormatException e) {
+                }
+
+                int progress = 20 + (int)((processedBytes * 30) / fileSize);
+                updateBucketProgress(progress, "Bucket Sort: распределение " + processedBytes / 1024 + " КБ");
+                updateBucketTimeLabel();
+            }
+        }
+
+        for (BufferedWriter writer : writers) {
+            writer.close();
+        }
+
+        return bucketFiles;
+    }
+
+    private void sortAllBuckets(List<File> bucketFiles) throws IOException {
+        int totalBuckets = bucketFiles.size();
+        for (int i = 0; i < totalBuckets; i++) {
+            File bucketFile = bucketFiles.get(i);
+            List<Integer> bucketData = readBucketToMemory(bucketFile);
+            Collections.sort(bucketData);
+            writeBucketToFile(bucketData, bucketFile);
+
+            int progress = 50 + (i * 30) / totalBuckets;
+            updateBucketProgress(progress, "Bucket Sort: сортировка корзины " + (i + 1) + "/" + totalBuckets);
+            updateBucketTimeLabel();
+        }
+    }
+
+    private List<Integer> readBucketToMemory(File bucketFile) throws IOException {
+        List<Integer> data = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(bucketFile))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                try {
+                    data.add(Integer.parseInt(line.trim()));
+                } catch (NumberFormatException e) {
+                }
+            }
+        }
+        return data;
+    }
+
+    private void writeBucketToFile(List<Integer> data, File bucketFile) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(bucketFile))) {
+            for (int value : data) {
+                writer.write(value + "\n");
+            }
+        }
+    }
+
+    private void mergeBucketsToFile(List<File> bucketFiles, String outputFile) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputFile))) {
+            long totalElements = estimateTotalLines(bucketFiles);
+            long processedElements = 0;
+
+            for (File bucketFile : bucketFiles) {
+                try (BufferedReader reader = new BufferedReader(new FileReader(bucketFile))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.trim().isEmpty()) continue;
+                        writer.write(line + "\n");
+                        processedElements++;
+
+                        if (processedElements % 10000 == 0) {
+                            int progress = 80 + (int)((processedElements * 15) / totalElements);
+                            updateBucketProgress(progress, "Bucket Sort: объединение " + processedElements + " элементов");
+                            updateBucketTimeLabel();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private long estimateTotalLines(List<File> files) throws IOException {
+        long total = 0;
+        for (File file : files) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                while (reader.readLine() != null) {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    private void cleanupTempFiles(List<File> tempFiles) {
+        int deletedCount = 0;
+        for (File file : tempFiles) {
+            if (file.delete()) {
+                deletedCount++;
+            }
+        }
+    }
+
+    private void updateBucketProgress(int value, String status) {
+        SwingUtilities.invokeLater(() -> {
+            bucketProgressBar.setValue(value);
+            if (status != null) {
+                updateStatus(status);
+            }
+        });
+    }
+
+    private void updateBucketProgress(int value) {
+        updateBucketProgress(value, null);
+    }
+
+    private void updateBucketTimeLabel() {
+        if (bucketStartTime > 0) {
+            SwingUtilities.invokeLater(() -> {
+                long elapsed = (System.currentTimeMillis() - bucketStartTime) / 1000;
+                bucketTimeLabel.setText("Время: " + elapsed + " сек");
+            });
+        }
+    }
+
     private void runOneWayMergeSort() throws IOException {
         updateStatus("One-Way: запуск...");
         String inputFile = "large_file.txt";
         String outputFile = "sorted_one_way.txt";
 
-
         updateOneWayProgress(0, "One-Way: разделение файла...");
         List<File> chunks = splitAndSortFiles(inputFile, "chunk1_", 0, 50, true);
         updateOneWayProgress(50, "One-Way: файл разделен на " + chunks.size() + " чанков");
-
 
         updateOneWayProgress(50, "One-Way: начало слияния...");
         oneWayMergeSortWithProgress(chunks, outputFile, 50, 50);
@@ -219,11 +432,9 @@ public class Coursework extends JFrame {
         String inputFile = "large_file.txt";
         String outputFile = "sorted_k_way.txt";
 
-
         updateKWayProgress(0, "K-Way: разделение файла...");
         List<File> chunks = splitAndSortFiles(inputFile, "chunk2_", 0, 50, false);
         updateKWayProgress(50, "K-Way: файл разделен на " + chunks.size() + " чанков");
-
 
         updateKWayProgress(50, "K-Way: начало многопутевого слияния...");
         kWayMergeSortWithProgress(chunks, outputFile, 50, 50);
@@ -233,17 +444,14 @@ public class Coursework extends JFrame {
         updateKWayTimeLabel();
     }
 
-
     private void runReplacementSelectionSort() throws IOException {
         updateStatus("Replacement Selection: запуск...");
         String inputFile = "large_file.txt";
         String outputFile = "sorted_replacement.txt";
 
-
         updateReplacementProgress(0, "Replacement: создание серий...");
         List<File> series = replacementSelectionSort(inputFile, "replacement_");
         updateReplacementProgress(60, "Replacement: создано " + series.size() + " серий");
-
 
         updateReplacementProgress(60, "Replacement: слияние серий...");
         kWayMergeSortWithProgress(series, outputFile, 60, 40);
@@ -265,13 +473,11 @@ public class Coursework extends JFrame {
             long totalLines = 0;
             long processedLines = 0;
 
-
             try (BufferedReader countReader = new BufferedReader(new FileReader(inputFile))) {
                 while (countReader.readLine() != null) {
                     totalLines++;
                 }
             }
-
 
             for (int i = 0; i < REPLACEMENT_BUFFER_SIZE; i++) {
                 String line = reader.readLine();
@@ -282,31 +488,26 @@ public class Coursework extends JFrame {
 
             while (!currentRun.isEmpty() || !nextRun.isEmpty()) {
                 if (currentRun.isEmpty()) {
-
                     if (!currentOutput.isEmpty()) {
                         File runFile = createSortedTempFile(currentOutput, prefix + outputFiles.size());
                         outputFiles.add(runFile);
                         currentOutput.clear();
                     }
 
-
                     PriorityQueue<String> temp = currentRun;
                     currentRun = nextRun;
                     nextRun = temp;
                     lastOutput = null;
 
-                    updateReplacementProgress((int) ((processedLines * 60) / totalLines),
+                    updateReplacementProgress((int)((processedLines * 60) / totalLines),
                             "Replacement: начата серия " + (outputFiles.size() + 1));
                 }
-
 
                 String minElement = currentRun.poll();
 
                 if (lastOutput == null || minElement.compareTo(lastOutput) >= 0) {
-
                     currentOutput.add(minElement);
                     lastOutput = minElement;
-
 
                     String nextLine = reader.readLine();
                     if (nextLine != null) {
@@ -317,19 +518,16 @@ public class Coursework extends JFrame {
                             nextRun.offer(nextLine);
                         }
 
-
                         if (processedLines % 1000 == 0) {
-                            updateReplacementProgress((int) ((processedLines * 60) / totalLines),
+                            updateReplacementProgress((int)((processedLines * 60) / totalLines),
                                     "Replacement: обработано " + processedLines + "/" + totalLines + " строк");
                             updateReplacementTimeLabel();
                         }
                     }
                 } else {
-
                     nextRun.offer(minElement);
                 }
             }
-
 
             if (!currentOutput.isEmpty()) {
                 File runFile = createSortedTempFile(currentOutput, prefix + outputFiles.size());
@@ -339,7 +537,6 @@ public class Coursework extends JFrame {
 
         return outputFiles;
     }
-
 
     private List<File> splitAndSortFiles(String inputFile, String chunkPrefix,
                                          int progressStart, int progressRange, boolean isOneWay) throws IOException {
@@ -364,8 +561,7 @@ public class Coursework extends JFrame {
                 int lineSize = getMemorySize(line);
                 processedBytes += lineSize;
 
-
-                int progress = progressStart + (int) ((processedBytes * progressRange) / fileSize);
+                int progress = progressStart + (int)((processedBytes * progressRange) / fileSize);
                 if (isOneWay) {
                     updateOneWayProgress(progress);
                 } else {
@@ -379,16 +575,14 @@ public class Coursework extends JFrame {
                     File tempFile = createSortedTempFile(chunk, chunkPrefix + count++);
                     tempFiles.add(tempFile);
 
-
                     chunk.clear();
                     chunk.add(line);
                     currentChunkSize = lineSize;
 
-
                     if (isOneWay) {
-                        updateOneWayProgress(progress, "One-Way: создан чанк " + (count - 1));
+                        updateOneWayProgress(progress, "One-Way: создан чанк " + (count-1));
                     } else {
-                        updateKWayProgress(progress, "K-Way: создан чанк " + (count - 1));
+                        updateKWayProgress(progress, "K-Way: создан чанк " + (count-1));
                     }
                 }
 
@@ -399,7 +593,6 @@ public class Coursework extends JFrame {
                     updateKWayTimeLabel();
                 }
             }
-
 
             if (!chunk.isEmpty()) {
                 File tempFile = createSortedTempFile(chunk, chunkPrefix + count);
@@ -434,13 +627,11 @@ public class Coursework extends JFrame {
             List<File> mergedFiles = new ArrayList<>();
             for (int i = 0; i < currentFiles.size(); i += 2) {
                 if (i + 1 < currentFiles.size()) {
-
                     File mergedFile = mergeTwoFiles(currentFiles.get(i), currentFiles.get(i + 1),
                             "one_way_temp_" + stage + "_" + i);
                     mergedFiles.add(mergedFile);
                     completedMerges++;
                 } else {
-
                     mergedFiles.add(currentFiles.get(i));
                 }
 
@@ -451,7 +642,6 @@ public class Coursework extends JFrame {
             currentFiles = mergedFiles;
             stage++;
         }
-
 
         if (!currentFiles.isEmpty()) {
             Files.move(currentFiles.get(0).toPath(), Paths.get(outputFile), StandardCopyOption.REPLACE_EXISTING);
@@ -465,7 +655,6 @@ public class Coursework extends JFrame {
         }
 
         if (chunks.size() == 1) {
-
             Files.copy(chunks.get(0).toPath(), Paths.get(outputFile), StandardCopyOption.REPLACE_EXISTING);
             if (progressStart + progressRange <= 100) {
                 updateKWayProgress(progressStart + progressRange);
@@ -477,7 +666,6 @@ public class Coursework extends JFrame {
         List<BufferedReader> readers = new ArrayList<>();
 
         try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(outputFile))) {
-
             for (File file : chunks) {
                 BufferedReader reader = new BufferedReader(new FileReader(file));
                 readers.add(reader);
@@ -493,21 +681,18 @@ public class Coursework extends JFrame {
 
             updateKWayProgress(progressStart, "K-Way: начало слияния " + chunks.size() + " чанков");
 
-
             while (!pq.isEmpty()) {
                 FileLine minLine = pq.poll();
                 writer.write(minLine.line);
                 writer.newLine();
                 processedLines++;
 
-
                 if (processedLines % 10000 == 0) {
-                    int progress = progressStart + (int) ((processedLines * progressRange) / totalLines);
+                    int progress = progressStart + (int)((processedLines * progressRange) / totalLines);
                     updateKWayProgress(progress,
                             "K-Way: обработано " + processedLines + "/" + totalLines + " строк");
                     updateKWayTimeLabel();
                 }
-
 
                 String nextLine = minLine.reader.readLine();
                 if (nextLine != null) {
@@ -517,19 +702,16 @@ public class Coursework extends JFrame {
 
             updateKWayProgress(progressStart + progressRange, "K-Way: слияние завершено");
         } finally {
-
             for (BufferedReader reader : readers) {
                 try {
                     reader.close();
                 } catch (IOException e) {
-
                 }
             }
         }
     }
 
     private File createSortedTempFile(List<String> chunk, String filename) throws IOException {
-
         Collections.sort(chunk, String.CASE_INSENSITIVE_ORDER);
 
         File tempFile = File.createTempFile(filename, ".tmp");
@@ -568,13 +750,11 @@ public class Coursework extends JFrame {
                 }
             }
 
-
             while (line1 != null) {
                 writer.write(line1);
                 writer.newLine();
                 line1 = reader1.readLine();
             }
-
 
             while (line2 != null) {
                 writer.write(line2);
@@ -583,32 +763,10 @@ public class Coursework extends JFrame {
             }
         }
 
-
         file1.delete();
         file2.delete();
 
         return tempFile;
-    }
-
-    private long estimateTotalLines(List<File> files) throws IOException {
-        long total = 0;
-        for (File file : files) {
-            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-                while (reader.readLine() != null) {
-                    total++;
-                }
-            }
-        }
-        return total;
-    }
-
-    private void cleanupTempFiles(List<File> tempFiles) {
-        int deletedCount = 0;
-        for (File file : tempFiles) {
-            if (file.delete()) {
-                deletedCount++;
-            }
-        }
     }
 
     private int getMemorySize(String line) {
@@ -629,7 +787,6 @@ public class Coursework extends JFrame {
             return this.line.compareToIgnoreCase(other.line);
         }
     }
-
 
     private void updateStatus(String status) {
         SwingUtilities.invokeLater(() -> statusLabel.setText(status));
