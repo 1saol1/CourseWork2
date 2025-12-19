@@ -1,3 +1,4 @@
+
 import javax.swing.*;
 import java.awt.*;
 import java.io.*;
@@ -8,25 +9,29 @@ import java.util.List;
 public class Coursework extends JFrame {
     private JProgressBar oneWayProgressBar;
     private JProgressBar kWayProgressBar;
+    private JProgressBar replacementProgressBar;
     private JLabel statusLabel;
     private JLabel timeLabel;
     private JLabel oneWayTimeLabel;
     private JLabel kWayTimeLabel;
+    private JLabel replacementTimeLabel;
     private JButton startButton;
 
     private long startTime;
     private long oneWayStartTime;
     private long kWayStartTime;
+    private long replacementStartTime;
     private volatile boolean isRunning = false;
 
     private static final int MAX_MEMORY_SIZE = 250 * 1024 * 1024;
+    private static final int REPLACEMENT_BUFFER_SIZE = 100000;
 
     public Coursework() {
         initializeGUI();
     }
 
     private void initializeGUI() {
-        setTitle("Сравнение сортировок - One-Way vs K-Way Merge");
+        setTitle("Сравнение сортировок - One-Way vs K-Way vs Replacement Selection");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
         setResizable(false);
@@ -44,8 +49,7 @@ public class Coursework extends JFrame {
         startButton.setPreferredSize(new Dimension(180, 35));
         controlPanel.add(startButton);
 
-
-        JPanel progressPanel = new JPanel(new GridLayout(4, 1, 8, 8));
+        JPanel progressPanel = new JPanel(new GridLayout(5, 1, 8, 8));
         progressPanel.setBorder(BorderFactory.createTitledBorder("Прогресс выполнения"));
 
 
@@ -56,7 +60,6 @@ public class Coursework extends JFrame {
         oneWayProgressBar.setForeground(new Color(0, 0, 150));
         oneWayProgressBar.setPreferredSize(new Dimension(400, 20));
         oneWayPanel.add(oneWayProgressBar, BorderLayout.CENTER);
-
         oneWayTimeLabel = new JLabel("Время: 0 сек");
         oneWayTimeLabel.setFont(new Font("Arial", Font.PLAIN, 11));
         oneWayPanel.add(oneWayTimeLabel, BorderLayout.SOUTH);
@@ -69,10 +72,21 @@ public class Coursework extends JFrame {
         kWayProgressBar.setForeground(new Color(150, 0, 0));
         kWayProgressBar.setPreferredSize(new Dimension(400, 20));
         kWayPanel.add(kWayProgressBar, BorderLayout.CENTER);
-
         kWayTimeLabel = new JLabel("Время: 0 сек");
         kWayTimeLabel.setFont(new Font("Arial", Font.PLAIN, 11));
         kWayPanel.add(kWayTimeLabel, BorderLayout.SOUTH);
+
+
+        JPanel replacementPanel = new JPanel(new BorderLayout(5, 5));
+        replacementPanel.add(new JLabel("Replacement Selection Sort:"), BorderLayout.NORTH);
+        replacementProgressBar = new JProgressBar(0, 100);
+        replacementProgressBar.setStringPainted(true);
+        replacementProgressBar.setForeground(new Color(0, 100, 0));
+        replacementProgressBar.setPreferredSize(new Dimension(400, 20));
+        replacementPanel.add(replacementProgressBar, BorderLayout.CENTER);
+        replacementTimeLabel = new JLabel("Время: 0 сек");
+        replacementTimeLabel.setFont(new Font("Arial", Font.PLAIN, 11));
+        replacementPanel.add(replacementTimeLabel, BorderLayout.SOUTH);
 
 
         JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
@@ -88,6 +102,7 @@ public class Coursework extends JFrame {
 
         progressPanel.add(oneWayPanel);
         progressPanel.add(kWayPanel);
+        progressPanel.add(replacementPanel);
         progressPanel.add(infoPanel);
 
         mainPanel.add(controlPanel, BorderLayout.NORTH);
@@ -112,8 +127,10 @@ public class Coursework extends JFrame {
 
         oneWayProgressBar.setValue(0);
         kWayProgressBar.setValue(0);
+        replacementProgressBar.setValue(0);
         oneWayTimeLabel.setText("Время: 0 сек");
         kWayTimeLabel.setText("Время: 0 сек");
+        replacementTimeLabel.setText("Время: 0 сек");
 
 
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
@@ -122,8 +139,9 @@ public class Coursework extends JFrame {
                 startTime = System.currentTimeMillis();
                 oneWayStartTime = 0;
                 kWayStartTime = 0;
+                replacementStartTime = 0;
 
-                updateStatus("Запуск обеих сортировок...");
+                updateStatus("Запуск всех сортировок...");
                 updateTimeLabel();
 
 
@@ -145,12 +163,23 @@ public class Coursework extends JFrame {
                     }
                 });
 
+                Thread replacementThread = new Thread(() -> {
+                    try {
+                        replacementStartTime = System.currentTimeMillis();
+                        runReplacementSelectionSort();
+                    } catch (IOException e) {
+                        updateStatus("Ошибка в Replacement Selection: " + e.getMessage());
+                    }
+                });
+
                 oneWayThread.start();
                 kWayThread.start();
+                replacementThread.start();
 
 
                 oneWayThread.join();
                 kWayThread.join();
+                replacementThread.join();
 
                 return null;
             }
@@ -159,7 +188,7 @@ public class Coursework extends JFrame {
             protected void done() {
                 isRunning = false;
                 startButton.setEnabled(true);
-                updateStatus("Обе сортировки завершены!");
+                updateStatus("Все сортировки завершены!");
                 updateTimeLabel();
             }
         };
@@ -168,7 +197,7 @@ public class Coursework extends JFrame {
 
     private void runOneWayMergeSort() throws IOException {
         updateStatus("One-Way: запуск...");
-        String inputFile = "large_file.txt";  // Один файл для обеих сортировок
+        String inputFile = "large_file.txt";
         String outputFile = "sorted_one_way.txt";
 
 
@@ -204,6 +233,114 @@ public class Coursework extends JFrame {
         updateKWayTimeLabel();
     }
 
+
+    private void runReplacementSelectionSort() throws IOException {
+        updateStatus("Replacement Selection: запуск...");
+        String inputFile = "large_file.txt";
+        String outputFile = "sorted_replacement.txt";
+
+
+        updateReplacementProgress(0, "Replacement: создание серий...");
+        List<File> series = replacementSelectionSort(inputFile, "replacement_");
+        updateReplacementProgress(60, "Replacement: создано " + series.size() + " серий");
+
+
+        updateReplacementProgress(60, "Replacement: слияние серий...");
+        kWayMergeSortWithProgress(series, outputFile, 60, 40);
+
+        cleanupTempFiles(series);
+        updateReplacementProgress(100, "Replacement Selection завершен!");
+        updateReplacementTimeLabel();
+    }
+
+    private List<File> replacementSelectionSort(String inputFile, String prefix) throws IOException {
+        List<File> outputFiles = new ArrayList<>();
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
+            PriorityQueue<String> currentRun = new PriorityQueue<>();
+            PriorityQueue<String> nextRun = new PriorityQueue<>();
+            List<String> currentOutput = new ArrayList<>();
+
+            String lastOutput = null;
+            long totalLines = 0;
+            long processedLines = 0;
+
+
+            try (BufferedReader countReader = new BufferedReader(new FileReader(inputFile))) {
+                while (countReader.readLine() != null) {
+                    totalLines++;
+                }
+            }
+
+
+            for (int i = 0; i < REPLACEMENT_BUFFER_SIZE; i++) {
+                String line = reader.readLine();
+                if (line == null) break;
+                currentRun.offer(line);
+                processedLines++;
+            }
+
+            while (!currentRun.isEmpty() || !nextRun.isEmpty()) {
+                if (currentRun.isEmpty()) {
+
+                    if (!currentOutput.isEmpty()) {
+                        File runFile = createSortedTempFile(currentOutput, prefix + outputFiles.size());
+                        outputFiles.add(runFile);
+                        currentOutput.clear();
+                    }
+
+
+                    PriorityQueue<String> temp = currentRun;
+                    currentRun = nextRun;
+                    nextRun = temp;
+                    lastOutput = null;
+
+                    updateReplacementProgress((int) ((processedLines * 60) / totalLines),
+                            "Replacement: начата серия " + (outputFiles.size() + 1));
+                }
+
+
+                String minElement = currentRun.poll();
+
+                if (lastOutput == null || minElement.compareTo(lastOutput) >= 0) {
+
+                    currentOutput.add(minElement);
+                    lastOutput = minElement;
+
+
+                    String nextLine = reader.readLine();
+                    if (nextLine != null) {
+                        processedLines++;
+                        if (nextLine.compareTo(lastOutput) >= 0) {
+                            currentRun.offer(nextLine);
+                        } else {
+                            nextRun.offer(nextLine);
+                        }
+
+
+                        if (processedLines % 1000 == 0) {
+                            updateReplacementProgress((int) ((processedLines * 60) / totalLines),
+                                    "Replacement: обработано " + processedLines + "/" + totalLines + " строк");
+                            updateReplacementTimeLabel();
+                        }
+                    }
+                } else {
+
+                    nextRun.offer(minElement);
+                }
+            }
+
+
+            if (!currentOutput.isEmpty()) {
+                File runFile = createSortedTempFile(currentOutput, prefix + outputFiles.size());
+                outputFiles.add(runFile);
+            }
+        }
+
+        return outputFiles;
+    }
+
+
     private List<File> splitAndSortFiles(String inputFile, String chunkPrefix,
                                          int progressStart, int progressRange, boolean isOneWay) throws IOException {
         File file = new File(inputFile);
@@ -228,7 +365,7 @@ public class Coursework extends JFrame {
                 processedBytes += lineSize;
 
 
-                int progress = progressStart + (int)((processedBytes * progressRange) / fileSize);
+                int progress = progressStart + (int) ((processedBytes * progressRange) / fileSize);
                 if (isOneWay) {
                     updateOneWayProgress(progress);
                 } else {
@@ -249,9 +386,9 @@ public class Coursework extends JFrame {
 
 
                     if (isOneWay) {
-                        updateOneWayProgress(progress, "One-Way: создан чанк " + (count-1));
+                        updateOneWayProgress(progress, "One-Way: создан чанк " + (count - 1));
                     } else {
-                        updateKWayProgress(progress, "K-Way: создан чанк " + (count-1));
+                        updateKWayProgress(progress, "K-Way: создан чанк " + (count - 1));
                     }
                 }
 
@@ -330,7 +467,9 @@ public class Coursework extends JFrame {
         if (chunks.size() == 1) {
 
             Files.copy(chunks.get(0).toPath(), Paths.get(outputFile), StandardCopyOption.REPLACE_EXISTING);
-            updateKWayProgress(100);
+            if (progressStart + progressRange <= 100) {
+                updateKWayProgress(progressStart + progressRange);
+            }
             return;
         }
 
@@ -363,7 +502,7 @@ public class Coursework extends JFrame {
 
 
                 if (processedLines % 10000 == 0) {
-                    int progress = progressStart + (int)((processedLines * progressRange) / totalLines);
+                    int progress = progressStart + (int) ((processedLines * progressRange) / totalLines);
                     updateKWayProgress(progress,
                             "K-Way: обработано " + processedLines + "/" + totalLines + " строк");
                     updateKWayTimeLabel();
@@ -470,7 +609,6 @@ public class Coursework extends JFrame {
                 deletedCount++;
             }
         }
-
     }
 
     private int getMemorySize(String line) {
@@ -492,7 +630,7 @@ public class Coursework extends JFrame {
         }
     }
 
-    
+
     private void updateStatus(String status) {
         SwingUtilities.invokeLater(() -> statusLabel.setText(status));
     }
@@ -522,6 +660,15 @@ public class Coursework extends JFrame {
         }
     }
 
+    private void updateReplacementTimeLabel() {
+        if (replacementStartTime > 0) {
+            SwingUtilities.invokeLater(() -> {
+                long elapsed = (System.currentTimeMillis() - replacementStartTime) / 1000;
+                replacementTimeLabel.setText("Время: " + elapsed + " сек");
+            });
+        }
+    }
+
     private void updateOneWayProgress(int value, String status) {
         SwingUtilities.invokeLater(() -> {
             oneWayProgressBar.setValue(value);
@@ -546,6 +693,19 @@ public class Coursework extends JFrame {
 
     private void updateKWayProgress(int value) {
         updateKWayProgress(value, null);
+    }
+
+    private void updateReplacementProgress(int value, String status) {
+        SwingUtilities.invokeLater(() -> {
+            replacementProgressBar.setValue(value);
+            if (status != null) {
+                updateStatus(status);
+            }
+        });
+    }
+
+    private void updateReplacementProgress(int value) {
+        updateReplacementProgress(value, null);
     }
 
     public static void main(String[] args) {
