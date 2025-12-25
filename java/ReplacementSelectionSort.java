@@ -1,30 +1,40 @@
+import java.awt.Color;
 import java.io.*;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 
-public class ReplacementSelectionSort {
-    private static final int REPLACEMENT_BUFFER_SIZE = 30000;
-    private static final int PROGRESS_UPDATE_INTERVAL = 500;
-    private static final int TIME_UPDATE_INTERVAL = 5000;
+public class ReplacementSelectionSort extends BaseExternalSorter {
+    private static final Color PROGRESS_COLOR = new Color(0, 100, 0);
+    private static final int REPLACEMENT_BUFFER_SIZE = 100000;
 
-    public static void sort(String inputFile, String outputFile, Coursework gui) throws IOException {
-        gui.updateStatus("Replacement Selection: запуск...");
+    @Override
+    public void sort(String inputFile, String outputFile, Coursework gui) throws IOException {
+        // Основной метод сортировки с замещающим выбором
+        this.gui = gui;
+        gui.updateStatus(getAlgorithmName() + ": запуск...");
 
-        gui.updateReplacementProgress(0, "Replacement: создание серий...");
-        List<File> series = replacementSelectionSort(inputFile, "replacement_", gui);
-        gui.updateReplacementProgress(60, "Replacement: создано " + series.size() + " серий");
+        // Создает отсортированные серии с помощью алгоритма замещающего выбора
+        gui.updateReplacementProgress(0, "Создание серий...");
+        List<File> series = replacementSelectionSort(inputFile, gui);
+        gui.updateReplacementProgress(60, "Создано " + series.size() + " серий");
 
-        gui.updateReplacementProgress(60, "Replacement: слияние серий...");
-        KWayMergeSort.kWayMergeSortWithProgress(series, outputFile, 60, 40, gui);
+        // Сливает созданные серии в один файл
+        gui.updateReplacementProgress(60, "Слияние серий...");
+        kWayMerge(series, outputFile, gui);
 
+        // Удаляет временные файлы
         cleanupTempFiles(series);
-        gui.updateReplacementProgress(100, "Replacement Selection завершен!");
+        gui.updateReplacementProgress(100, getAlgorithmName() + " завершен!");
+        gui.updateReplacementTimeLabel();
     }
 
-    private static List<File> replacementSelectionSort(String inputFile, String prefix, Coursework gui) throws IOException {
+    private List<File> replacementSelectionSort(String inputFile, Coursework gui) throws IOException {
+        // Реализует алгоритм замещающего выбора для создания отсортированных серий
         List<File> outputFiles = new ArrayList<>();
 
-        try (BufferedReader reader = new BufferedReader(new FileReader(inputFile), 8192 * 4)) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
             PriorityQueue<String> currentRun = new PriorityQueue<>();
             PriorityQueue<String> nextRun = new PriorityQueue<>();
             List<String> currentOutput = new ArrayList<>();
@@ -32,70 +42,71 @@ public class ReplacementSelectionSort {
             String lastOutput = null;
             long totalWords = 0;
             long processedWords = 0;
-            long lastProgressUpdateTime = System.currentTimeMillis();
-            int seriesCount = 0;
 
+            // Подсчитывает общее количество слов для отслеживания прогресса
             totalWords = countWordsInFile(inputFile);
 
-            processedWords = initialBufferLoad(reader, currentRun, REPLACEMENT_BUFFER_SIZE);
+            // Загружает начальную порцию данных в память
+            loadInitialBuffer(reader, currentRun, REPLACEMENT_BUFFER_SIZE);
+            processedWords = currentRun.size();
 
             while (!currentRun.isEmpty() || !nextRun.isEmpty()) {
                 if (currentRun.isEmpty()) {
+                    // Сохраняет текущую серию в файл и начинает новую
                     if (!currentOutput.isEmpty()) {
-                        File runFile = createSortedTempFile(currentOutput, prefix + outputFiles.size());
+                        File runFile = createSortedTempFile(currentOutput, "replacement_series_" + outputFiles.size());
                         outputFiles.add(runFile);
                         currentOutput.clear();
-                        seriesCount++;
-
-                        System.gc();
-                        try { Thread.sleep(30); } catch (InterruptedException e) { }
                     }
 
+                    // Переключается на следующую серию
                     PriorityQueue<String> temp = currentRun;
                     currentRun = nextRun;
                     nextRun = temp;
                     lastOutput = null;
 
                     gui.updateReplacementProgress((int)((processedWords * 60) / totalWords),
-                            "Replacement: начата серия " + (outputFiles.size() + 1));
+                            "Начата серия " + (outputFiles.size() + 1));
                 }
 
                 String minElement = currentRun.poll();
 
                 if (lastOutput == null || minElement.compareTo(lastOutput) >= 0) {
+                    // Добавляет элемент в текущую серию
                     currentOutput.add(minElement);
                     lastOutput = minElement;
 
+                    // Читает следующий элемент из файла
                     String nextLine = reader.readLine();
                     if (nextLine != null) {
                         String[] words = nextLine.split("\\s+");
                         for (String word : words) {
                             if (!word.trim().isEmpty()) {
                                 processedWords++;
+                                // Распределяет слово в текущую или следующую серию
                                 if (word.compareTo(lastOutput) >= 0) {
                                     currentRun.offer(word);
                                 } else {
                                     nextRun.offer(word);
                                 }
 
-                                long currentTime = System.currentTimeMillis();
-                                if (currentTime - lastProgressUpdateTime > 100 || processedWords % PROGRESS_UPDATE_INTERVAL == 0) {
-                                    int progress = (int)((processedWords * 60) / totalWords);
-                                    gui.updateReplacementProgress(progress,
-                                            String.format("Replacement: %d/%d слов (%.1f%%)",
-                                                    processedWords, totalWords, (processedWords * 100.0) / totalWords));
-                                    lastProgressUpdateTime = currentTime;
+                                if (processedWords % PROGRESS_UPDATE_INTERVAL == 0) {
+                                    gui.updateReplacementProgress((int)((processedWords * 60) / totalWords),
+                                            "Обработано " + processedWords + "/" + totalWords + " слов");
+                                    gui.updateReplacementTimeLabel();
                                 }
                             }
                         }
                     }
                 } else {
+                    // Отправляет элемент в следующую серию
                     nextRun.offer(minElement);
                 }
             }
 
+            // Сохраняет последнюю серию
             if (!currentOutput.isEmpty()) {
-                File runFile = createSortedTempFile(currentOutput, prefix + outputFiles.size());
+                File runFile = createSortedTempFile(currentOutput, "replacement_series_" + outputFiles.size());
                 outputFiles.add(runFile);
             }
         }
@@ -103,25 +114,26 @@ public class ReplacementSelectionSort {
         return outputFiles;
     }
 
-    private static long countWordsInFile(String inputFile) throws IOException {
-        long wordCount = 0;
-        try (BufferedReader countReader = new BufferedReader(new FileReader(inputFile))) {
+    private long countWordsInFile(String inputFile) throws IOException {
+        // Подсчитывает общее количество слов в файле
+        long count = 0;
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
             String line;
-            while ((line = countReader.readLine()) != null) {
+            while ((line = reader.readLine()) != null) {
                 String[] words = line.split("\\s+");
                 for (String word : words) {
                     if (!word.trim().isEmpty()) {
-                        wordCount++;
+                        count++;
                     }
                 }
             }
         }
-        return wordCount;
+        return count;
     }
 
-    private static long initialBufferLoad(BufferedReader reader, PriorityQueue<String> buffer, int bufferSize) throws IOException {
-        long wordsLoaded = 0;
-        for (int i = 0; i < bufferSize; i++) {
+    private void loadInitialBuffer(BufferedReader reader, PriorityQueue<String> buffer, int size) throws IOException {
+        // Загружает начальную порцию данных в приоритетную очередь
+        while (buffer.size() < size) {
             String line = reader.readLine();
             if (line == null) break;
 
@@ -129,35 +141,128 @@ public class ReplacementSelectionSort {
             for (String word : words) {
                 if (!word.trim().isEmpty()) {
                     buffer.offer(word);
-                    wordsLoaded++;
+                    if (buffer.size() >= size) break;
                 }
             }
         }
-        return wordsLoaded;
     }
 
-    private static File createSortedTempFile(List<String> words, String filename) throws IOException {
-        Collections.sort(words, String.CASE_INSENSITIVE_ORDER);
-
-        File tempFile = File.createTempFile(filename, ".tmp");
-        tempFile.deleteOnExit();
-
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
-            for (String word : words) {
-                writer.write(word);
-                writer.newLine();
-            }
+    private void kWayMerge(List<File> chunks, String outputFile, Coursework gui) throws IOException {
+        // Выполняет многопутевое слияние серий (аналогично KWayMergeSort)
+        if (chunks.isEmpty()) {
+            return;
         }
 
-        return tempFile;
+        if (chunks.size() == 1) {
+            // Копирует единственную серию напрямую в выходной файл
+            Files.copy(chunks.get(0).toPath(), Paths.get(outputFile), StandardCopyOption.REPLACE_EXISTING);
+            gui.updateReplacementProgress(100);
+            return;
+        }
+
+        PriorityQueue<FileWord> priorityQueue = new PriorityQueue<>();
+        List<BufferedReader> readers = new ArrayList<>();
+
+        try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(outputFile))) {
+            // Инициализирует приоритетную очередь первыми словами из каждой серии
+            for (File file : chunks) {
+                BufferedReader reader = new BufferedReader(new FileReader(file));
+                readers.add(reader);
+
+                String firstWord = reader.readLine();
+                if (firstWord != null) {
+                    priorityQueue.offer(new FileWord(firstWord, reader));
+                }
+            }
+
+            long totalWords = estimateTotalWords(chunks);
+            long processedWords = 0;
+
+            gui.updateReplacementProgress(60, "Слияние " + chunks.size() + " серий");
+
+            // Основной цикл многопутевого слияния
+            while (!priorityQueue.isEmpty()) {
+                FileWord minWord = priorityQueue.poll();
+                writer.write(minWord.word);
+                writer.newLine();
+                processedWords++;
+
+                if (processedWords % PROGRESS_UPDATE_INTERVAL == 0) {
+                    int progress = 60 + (int)((processedWords * 40) / totalWords);
+                    gui.updateReplacementProgress(progress,
+                            "Обработано " + processedWords + "/" + totalWords + " слов");
+                    gui.updateReplacementTimeLabel();
+                }
+
+                String nextWord = minWord.reader.readLine();
+                if (nextWord != null) {
+                    priorityQueue.offer(new FileWord(nextWord, minWord.reader));
+                }
+            }
+
+            gui.updateReplacementProgress(100, "Слияние завершено");
+        } finally {
+            // Закрывает все открытые потоки чтения
+            for (BufferedReader reader : readers) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    // Игнорирует ошибки при закрытии потоков
+                }
+            }
+        }
     }
 
-    private static void cleanupTempFiles(List<File> tempFiles) {
-        for (File file : tempFiles) {
-            try {
-                file.delete();
-            } catch (Exception e) {
-            }
+    @Override
+    public String getAlgorithmName() {
+        // Возвращает название алгоритма для отображения
+        return "Replacement Selection Sort";
+    }
+
+    @Override
+    public Color getProgressBarColor() {
+        // Возвращает цвет для прогресс-бара алгоритма
+        return PROGRESS_COLOR;
+    }
+
+    @Override
+    public String getAlgorithmId() {
+        // Возвращает идентификатор алгоритма
+        return "replacement";
+    }
+
+    @Override
+    protected void updateProgress(int value) {
+        // Обновляет прогресс в GUI
+        gui.updateReplacementProgress(value);
+    }
+
+    @Override
+    protected void updateProgress(int value, String status) {
+        // Обновляет прогресс в GUI с сообщением о статусе
+        gui.updateReplacementProgress(value, status);
+    }
+
+    @Override
+    protected void updateTimeLabel() {
+        // Обновляет метку времени в GUI
+        gui.updateReplacementTimeLabel();
+    }
+
+    private static class FileWord implements Comparable<FileWord> {
+        // Вспомогательный класс для хранения слова и соответствующего потока чтения
+        String word;
+        BufferedReader reader;
+
+        FileWord(String word, BufferedReader reader) {
+            this.word = word;
+            this.reader = reader;
+        }
+
+        @Override
+        public int compareTo(FileWord other) {
+            // Сравнивает слова без учета регистра для корректной сортировки
+            return this.word.compareToIgnoreCase(other.word);
         }
     }
 }

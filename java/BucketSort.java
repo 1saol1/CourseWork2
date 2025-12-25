@@ -1,203 +1,267 @@
+import java.awt.Color;
 import java.io.*;
 import java.util.*;
 
-public class BucketSort {
-    private static final int BUCKET_COUNT = 32;
-    private static final int MAX_WORDS_PER_BUCKET = 30000;
-    private static final int PROGRESS_UPDATE_INTERVAL = 5000;
+public class BucketSort extends BaseExternalSorter {
+    private static final Color PROGRESS_COLOR = new Color(150, 0, 150);
+    private static final int INITIAL_BUCKETS = 26;
+    private static final int MEMORY_THRESHOLD = 1000000;
 
-    public static void sort(String inputFile, String outputFile, Coursework gui) throws IOException {
-        gui.updateStatus("Bucket Sort: запуск...");
-        gui.updateBucketProgress(0, "Bucket Sort: анализ данных...");
+    @Override
+    public void sort(String inputFile, String outputFile, Coursework gui) throws IOException {
+        // Основной метод сортировки, выбирает стратегию в зависимости от размера файла
+        this.gui = gui;
+        updateProgress(0, getAlgorithmName() + ": запуск...");
 
-        int maxWordLength = findMaxWordLength(inputFile);
-        if (maxWordLength == -1) {
-            gui.updateStatus("Bucket Sort: файл не найден или пуст");
+        File input = new File(inputFile);
+        if (!input.exists() || input.length() == 0) {
+            updateProgress(0, "Bucket Sort: файл не найден или пуст");
             return;
         }
 
-        gui.updateBucketProgress(20, "Bucket Sort: распределение по корзинам...");
-        List<File> bucketFiles = distributeToBuckets(inputFile, maxWordLength, gui);
+        long fileSize = input.length();
+        long totalWords = countWords(inputFile);
 
-        gui.updateBucketProgress(50, "Bucket Sort: сортировка корзин...");
-        sortAllBuckets(bucketFiles, gui);
-
-        gui.updateBucketProgress(80, "Bucket Sort: объединение корзин...");
-        mergeBucketsToFile(bucketFiles, outputFile, gui);
-
-        gui.updateBucketProgress(95, "Bucket Sort: очистка временных файлов...");
-        cleanupTempFiles(bucketFiles);
-
-        gui.updateBucketProgress(100, "Bucket Sort завершен!");
-    }
-
-    private static int findMaxWordLength(String inputFile) throws IOException {
-        File file = new File(inputFile);
-        if (!file.exists()) {
-            return -1;
+        // Выбирает способ сортировки в зависимости от количества слов
+        if (totalWords < MEMORY_THRESHOLD) {
+            sortInMemory(inputFile, outputFile, totalWords);
+        } else {
+            sortWithBuckets(inputFile, outputFile, fileSize);
         }
 
-        int max = 0;
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+        updateProgress(100, getAlgorithmName() + " завершен!");
+        updateTimeLabel();
+    }
+
+    private void sortInMemory(String inputFile, String outputFile, long totalWords) throws IOException {
+        // Сортирует файл целиком в оперативной памяти
+        updateProgress(10, "Загрузка в память...");
+        List<String> allWords = new ArrayList<>();
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
             String line;
+            long readWords = 0;
+
             while ((line = reader.readLine()) != null) {
                 String[] words = line.split("\\s+");
                 for (String word : words) {
                     if (!word.trim().isEmpty()) {
-                        if (word.length() > max) {
-                            max = word.length();
+                        allWords.add(word);
+                        readWords++;
+
+                        if (readWords % PROGRESS_UPDATE_INTERVAL == 0) {
+                            int progress = 10 + (int)((readWords * 40) / totalWords);
+                            updateProgress(progress,
+                                    String.format("Загрузка: %d/%d слов", readWords, totalWords));
                         }
                     }
                 }
             }
         }
-        return max;
+
+        updateProgress(50, "Сортировка в памяти...");
+        // Сортирует все слова без учета регистра
+        Collections.sort(allWords, String.CASE_INSENSITIVE_ORDER);
+
+        updateProgress(75, "Запись результата...");
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputFile))) {
+            long writtenWords = 0;
+            for (String word : allWords) {
+                writer.write(word);
+                writer.newLine();
+                writtenWords++;
+
+                if (writtenWords % PROGRESS_UPDATE_INTERVAL == 0) {
+                    int progress = 75 + (int)((writtenWords * 25) / totalWords);
+                    updateProgress(progress,
+                            String.format("Запись: %d/%d слов", writtenWords, totalWords));
+                }
+            }
+        }
     }
 
-    private static List<File> distributeToBuckets(String inputFile, int maxWordLength, Coursework gui) throws IOException {
-        List<File> bucketFiles = new ArrayList<>();
-        List<BufferedWriter> writers = new ArrayList<>();
+    private void sortWithBuckets(String inputFile, String outputFile, long fileSize) throws IOException {
+        // Сортирует большие файлы с использованием корзин по первой букве
+        updateProgress(5, "Статистика по буквам...");
+        Map<Character, Long> letterCounts = new HashMap<>();
 
-        for (int i = 0; i < BUCKET_COUNT; i++) {
-            File bucketFile = File.createTempFile("bucket_" + i, ".tmp");
-            bucketFile.deleteOnExit();
-            bucketFiles.add(bucketFile);
-            writers.add(new BufferedWriter(new FileWriter(bucketFile)));
-        }
-
-        File file = new File(inputFile);
-        long fileSize = file.length();
-        long processedBytes = 0;
-        long wordCount = 0;
-        long lastUpdateTime = System.currentTimeMillis();
-
-        try (BufferedReader reader = new BufferedReader(new FileReader(file), 8192 * 4)) {
+        // Подсчитывает сколько слов начинается с каждой буквы
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
             String line;
+            long processedBytes = 0;
+
             while ((line = reader.readLine()) != null) {
                 processedBytes += line.getBytes().length + 1;
-                wordCount++;
-
-                long currentTime = System.currentTimeMillis();
-                if (currentTime - lastUpdateTime > 100 || wordCount % PROGRESS_UPDATE_INTERVAL == 0) {
-                    int progress = 20 + (int)((processedBytes * 30) / fileSize);
-                    gui.updateBucketProgress(progress,
-                            String.format("Bucket Sort: распределение %d слов (%.1f%%)",
-                                    wordCount, (processedBytes * 100.0) / fileSize));
-                    lastUpdateTime = currentTime;
-                }
-
                 String[] words = line.split("\\s+");
+
                 for (String word : words) {
                     if (!word.trim().isEmpty()) {
-                        int bucketIndex = (word.length() * BUCKET_COUNT) / (maxWordLength + 1);
-                        if (bucketIndex >= BUCKET_COUNT) bucketIndex = BUCKET_COUNT - 1;
-
-                        writers.get(bucketIndex).write(word + "\n");
+                        char firstChar = Character.toLowerCase(word.charAt(0));
+                        letterCounts.put(firstChar, letterCounts.getOrDefault(firstChar, 0L) + 1);
                     }
+                }
+
+                if (processedBytes % (10 * 1024 * 1024) == 0) {
+                    int progress = 5 + (int)((processedBytes * 15) / fileSize);
+                    updateProgress(progress, "Статистика...");
                 }
             }
         }
 
-        for (BufferedWriter writer : writers) {
+        updateProgress(20, "Распределение по временным файлам...");
+
+        // Создает временные файлы для каждой буквы алфавита
+        Map<Character, File> tempFiles = new HashMap<>();
+        Map<Character, BufferedWriter> writers = new HashMap<>();
+
+        for (char c = 'a'; c <= 'z'; c++) {
+            File tempFile = File.createTempFile("bucket_" + c, ".tmp");
+            tempFile.deleteOnExit();
+            tempFiles.put(c, tempFile);
+            writers.put(c, new BufferedWriter(new FileWriter(tempFile)));
+        }
+
+        // Распределяет слова по временным файлам в зависимости от первой буквы
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
+            String line;
+            long processedBytes = 0;
+            long wordCount = 0;
+
+            while ((line = reader.readLine()) != null) {
+                processedBytes += line.getBytes().length + 1;
+                String[] words = line.split("\\s+");
+
+                for (String word : words) {
+                    if (!word.trim().isEmpty()) {
+                        char firstChar = Character.toLowerCase(word.charAt(0));
+                        BufferedWriter writer;
+
+                        if (firstChar >= 'a' && firstChar <= 'z') {
+                            writer = writers.get(firstChar);
+                        } else {
+                            writer = writers.get('z'); // Слова не начинающиеся с буквы помещаются в корзину 'z'
+                        }
+
+                        writer.write(word);
+                        writer.newLine();
+                        wordCount++;
+                    }
+                }
+
+                if (processedBytes % (20 * 1024 * 1024) == 0) {
+                    int progress = 20 + (int)((processedBytes * 40) / fileSize);
+                    updateProgress(progress,
+                            String.format("Распределение: %d слов", wordCount));
+                }
+            }
+        }
+
+        // Закрывает все потоки записи
+        for (BufferedWriter writer : writers.values()) {
             writer.close();
         }
 
-        return bucketFiles;
-    }
+        updateProgress(60, "Сортировка временных файлов...");
 
-    private static void sortAllBuckets(List<File> bucketFiles, Coursework gui) throws IOException {
-        int totalBuckets = bucketFiles.size();
-        for (int i = 0; i < totalBuckets; i++) {
-            File bucketFile = bucketFiles.get(i);
+        // Сортирует каждый временный файл и объединяет результаты
+        try (BufferedWriter outputWriter = new BufferedWriter(new FileWriter(outputFile))) {
+            int bucketProcessed = 0;
+            for (char c = 'a'; c <= 'z'; c++) {
+                File tempFile = tempFiles.get(c);
+                if (tempFile.length() > 0) {
+                    List<String> bucketWords = new ArrayList<>();
 
-            sortBucketFileInPlace(bucketFile);
-
-            int progress = 50 + (i * 30) / totalBuckets;
-            gui.updateBucketProgress(progress,
-                    String.format("Bucket Sort: отсортирована корзина %d/%d", i + 1, totalBuckets));
-
-            if (i % 2 == 0) {
-                System.gc();
-                try { Thread.sleep(20); } catch (InterruptedException e) { }
-            }
-        }
-    }
-
-    private static void sortBucketFileInPlace(File bucketFile) throws IOException {
-        List<String> lines = new ArrayList<>();
-
-        try (BufferedReader reader = new BufferedReader(new FileReader(bucketFile))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!line.trim().isEmpty()) {
-                    lines.add(line.trim());
-                    if (lines.size() >= MAX_WORDS_PER_BUCKET) {
-                        Collections.sort(lines, String.CASE_INSENSITIVE_ORDER);
-                        writeBucketToFile(lines, bucketFile);
-                        lines.clear();
-                        System.gc();
-                    }
-                }
-            }
-        }
-
-        if (!lines.isEmpty()) {
-            Collections.sort(lines, String.CASE_INSENSITIVE_ORDER);
-            writeBucketToFile(lines, bucketFile);
-        }
-    }
-
-    private static void writeBucketToFile(List<String> data, File bucketFile) throws IOException {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(bucketFile))) {
-            for (String word : data) {
-                writer.write(word + "\n");
-            }
-        }
-    }
-
-    private static void mergeBucketsToFile(List<File> bucketFiles, String outputFile, Coursework gui) throws IOException {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputFile))) {
-            long totalElements = estimateTotalLines(bucketFiles);
-            long processedElements = 0;
-            long lastUpdateTime = System.currentTimeMillis();
-
-            for (File bucketFile : bucketFiles) {
-                try (BufferedReader reader = new BufferedReader(new FileReader(bucketFile))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        if (line.trim().isEmpty()) continue;
-                        writer.write(line + "\n");
-                        processedElements++;
-
-                        long currentTime = System.currentTimeMillis();
-                        if (currentTime - lastUpdateTime > 100 || processedElements % 5000 == 0) {
-                            int progress = 80 + (int)((processedElements * 15) / totalElements);
-                            gui.updateBucketProgress(progress,
-                                    String.format("Bucket Sort: объединение %d/%d слов (%.1f%%)",
-                                            processedElements, totalElements, (processedElements * 100.0) / totalElements));
-                            lastUpdateTime = currentTime;
+                    // Читает все слова из временного файла
+                    try (BufferedReader reader = new BufferedReader(new FileReader(tempFile))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            if (!line.trim().isEmpty()) {
+                                bucketWords.add(line);
+                            }
                         }
                     }
+
+                    // Сортирует слова в текущей корзине
+                    Collections.sort(bucketWords, String.CASE_INSENSITIVE_ORDER);
+
+                    // Записывает отсортированные слова в выходной файл
+                    for (String word : bucketWords) {
+                        outputWriter.write(word);
+                        outputWriter.newLine();
+                    }
+
+                    // Удаляет временный файл после обработки
+                    tempFile.delete();
                 }
+
+                bucketProcessed++;
+                int progress = 60 + (bucketProcessed * 40) / 26;
+                updateProgress(progress,
+                        String.format("Обработка: %d/26 корзин", bucketProcessed));
             }
         }
     }
 
-    private static long estimateTotalLines(List<File> files) throws IOException {
-        long total = 0;
-        for (File file : files) {
-            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-                while (reader.readLine() != null) {
-                    total++;
+    private long countWords(String inputFile) throws IOException {
+        // Подсчитывает общее количество слов в файле
+        long count = 0;
+        try (BufferedReader reader = new BufferedReader(new FileReader(inputFile))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] words = line.split("\\s+");
+                for (String word : words) {
+                    if (!word.trim().isEmpty()) {
+                        count++;
+                    }
                 }
             }
         }
-        return total;
+        return count;
     }
 
-    private static void cleanupTempFiles(List<File> tempFiles) {
-        for (File file : tempFiles) {
-            file.delete();
+    @Override
+    public String getAlgorithmName() {
+        // Возвращает название алгоритма для отображения
+        return "Bucket Sort";
+    }
+
+    @Override
+    public Color getProgressBarColor() {
+        // Возвращает цвет для прогресс-бара этого алгоритма
+        return PROGRESS_COLOR;
+    }
+
+    @Override
+    public String getAlgorithmId() {
+        // Возвращает идентификатор алгоритма
+        return "bucket";
+    }
+
+    @Override
+    protected void updateProgress(int value) {
+        // Обновляет прогресс в GUI без дополнительного сообщения
+        if (gui != null) {
+            gui.updateBucketProgress(value);
+        }
+    }
+
+    @Override
+    protected void updateProgress(int value, String status) {
+        // Обновляет прогресс в GUI с дополнительным сообщением о статусе
+        if (gui != null) {
+            if (status != null) {
+                gui.updateBucketProgress(value, status);
+            } else {
+                gui.updateBucketProgress(value);
+            }
+        }
+    }
+
+    @Override
+    protected void updateTimeLabel() {
+        // Обновляет метку времени в GUI
+        if (gui != null) {
+            gui.updateBucketTimeLabel();
         }
     }
 }

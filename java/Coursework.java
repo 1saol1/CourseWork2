@@ -1,6 +1,8 @@
 import javax.swing.*;
 import java.awt.*;
 import java.io.*;
+import java.util.*;
+import java.util.List;
 import java.util.concurrent.*;
 
 public class Coursework extends JFrame {
@@ -26,34 +28,56 @@ public class Coursework extends JFrame {
     private volatile boolean isRunning = false;
     private boolean parallelMode = true;
 
+    // Хранит время выполнения каждого алгоритма
     private long oneWayTime = 0;
     private long kWayTime = 0;
     private long replacementTime = 0;
     private long bucketTime = 0;
 
+    // Список доступных алгоритмов сортировки
+    private List<ExternalSortAlgorithm> sortingAlgorithms;
+
     public Coursework() {
+        // Инициализирует алгоритмы сортировки
+        initializeAlgorithms();
+        // Создает графический интерфейс
         initializeGUI();
     }
 
+    private void initializeAlgorithms() {
+        // Создает список алгоритмов для сортировки
+        sortingAlgorithms = Arrays.asList(
+                new OneWayMergeSort(),
+                new KWayMergeSort(),
+                new ReplacementSelectionSort(),
+                new BucketSort()
+        );
+    }
+
     private void initializeGUI() {
+        // Настраивает основные параметры окна
         setTitle("OutSorts - Сравнение алгоритмов внешней сортировки");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout(10, 10));
         setPreferredSize(new Dimension(1200, 900));
         setResizable(true);
 
+        // Создает главную панель с отступами
         JPanel mainPanel = new JPanel(new BorderLayout(20, 20));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
         mainPanel.setBackground(new Color(57, 57, 57));
 
+        // Создает панель для выбора файла
         JPanel fileSelectionPanel = createFileSelectionPanel();
         mainPanel.add(fileSelectionPanel, BorderLayout.NORTH);
 
+        // Создает панель с управлением и прогрессом
         JPanel controlProgressPanel = createControlProgressPanel();
         mainPanel.add(controlProgressPanel, BorderLayout.CENTER);
 
         add(mainPanel);
 
+        // Настраивает размер и положение окна
         pack();
         setLocationRelativeTo(null);
         setExtendedState(JFrame.MAXIMIZED_BOTH);
@@ -61,6 +85,7 @@ public class Coursework extends JFrame {
     }
 
     private JPanel createFileSelectionPanel() {
+        // Создает панель с элементами для выбора файла
         JPanel filePanel = new JPanel(new BorderLayout(15, 15));
         filePanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(89, 13, 51), 2),
@@ -70,9 +95,11 @@ public class Coursework extends JFrame {
         filePanel.setBackground(Color.WHITE);
         filePanel.setPreferredSize(new Dimension(1150, 120));
 
+        // Создает панель с полем ввода и кнопками
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
         controlPanel.setBackground(Color.WHITE);
 
+        // Создает поле для отображения пути к файлу
         pathField = new JTextField(60);
         pathField.setEditable(false);
         pathField.setFont(new Font("Arial", Font.PLAIN, 14));
@@ -83,6 +110,7 @@ public class Coursework extends JFrame {
                 BorderFactory.createEmptyBorder(5, 10, 5, 10)
         ));
 
+        // Создает кнопку для выбора файла
         selectButton = new JButton("Выбрать файл");
         selectButton.setFont(new Font("Arial", Font.BOLD, 14));
         selectButton.setPreferredSize(new Dimension(180, 35));
@@ -90,6 +118,7 @@ public class Coursework extends JFrame {
         selectButton.setForeground(Color.WHITE);
         selectButton.setFocusPainted(false);
 
+        // Создает кнопку для переключения режима работы
         modeButton = new JButton("Режим: ПАРАЛЛЕЛЬНЫЙ");
         modeButton.setFont(new Font("Arial", Font.BOLD, 12));
         modeButton.setPreferredSize(new Dimension(220, 35));
@@ -97,6 +126,7 @@ public class Coursework extends JFrame {
         modeButton.setForeground(Color.WHITE);
         modeButton.setFocusPainted(false);
 
+        // Создает кнопку для запуска сортировки
         startButton = new JButton("Начать сортировки");
         startButton.setFont(new Font("Arial", Font.BOLD, 14));
         startButton.setPreferredSize(new Dimension(200, 35));
@@ -105,6 +135,7 @@ public class Coursework extends JFrame {
         startButton.setFocusPainted(false);
         startButton.setEnabled(false);
 
+        // Добавляет элементы на панель
         controlPanel.add(new JLabel("Файл:"));
         controlPanel.add(pathField);
         controlPanel.add(selectButton);
@@ -113,6 +144,7 @@ public class Coursework extends JFrame {
 
         filePanel.add(controlPanel, BorderLayout.CENTER);
 
+        // Назначает обработчики событий для кнопок
         selectButton.addActionListener(e -> selectFile());
         startButton.addActionListener(e -> startSorting());
         modeButton.addActionListener(e -> toggleSortingMode());
@@ -121,10 +153,12 @@ public class Coursework extends JFrame {
     }
 
     private JPanel createControlProgressPanel() {
+        // Создает главную панель для отображения прогресса
         JPanel panel = new JPanel(new BorderLayout(15, 15));
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         panel.setBackground(new Color(57, 57, 57));
 
+        // Создает панель с информацией о статусе
         JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 10));
         infoPanel.setBackground(Color.WHITE);
         infoPanel.setBorder(BorderFactory.createCompoundBorder(
@@ -132,24 +166,29 @@ public class Coursework extends JFrame {
                 BorderFactory.createEmptyBorder(10, 15, 10, 15)
         ));
 
+        // Создает метку для отображения статуса
         statusLabel = new JLabel("Выберите файл для начала сортировки");
         statusLabel.setFont(new Font("Arial", Font.BOLD, 14));
         statusLabel.setForeground(new Color(70, 70, 70));
 
+        // Создает метку для отображения текущего времени
         timeLabel = new JLabel("Время: 0 сек");
         timeLabel.setFont(new Font("Arial", Font.PLAIN, 14));
         timeLabel.setForeground(new Color(100, 100, 100));
 
+        // Создает метку для отображения общего времени
         totalTimeLabel = new JLabel("Общее время: не измерено");
         totalTimeLabel.setFont(new Font("Arial", Font.BOLD, 14));
         totalTimeLabel.setForeground(new Color(89, 13, 51));
 
+        // Добавляет элементы на информационную панель
         infoPanel.add(statusLabel);
         infoPanel.add(new JSeparator(SwingConstants.VERTICAL));
         infoPanel.add(timeLabel);
         infoPanel.add(new JSeparator(SwingConstants.VERTICAL));
         infoPanel.add(totalTimeLabel);
 
+        // Создает панель с прогресс-барами
         JPanel progressPanel = new JPanel(new GridLayout(4, 1, 15, 15));
         progressPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(150, 150, 150), 1),
@@ -159,21 +198,25 @@ public class Coursework extends JFrame {
         progressPanel.setBackground(Color.WHITE);
         progressPanel.setPreferredSize(new Dimension(1150, 500));
 
+        // Создает панель для One-Way Merge Sort
         JPanel oneWayPanel = createAlgorithmPanel("One-Way Merge Sort:",
                 oneWayProgressBar = createProgressBar(new Color(0, 0, 150)),
                 oneWayTimeLabel = createTimeLabel());
         progressPanel.add(oneWayPanel);
 
+        // Создает панель для K-Way Merge Sort
         JPanel kWayPanel = createAlgorithmPanel("K-Way Merge Sort:",
                 kWayProgressBar = createProgressBar(new Color(150, 0, 0)),
                 kWayTimeLabel = createTimeLabel());
         progressPanel.add(kWayPanel);
 
+        // Создает панель для Replacement Selection Sort
         JPanel replacementPanel = createAlgorithmPanel("Replacement Selection Sort:",
                 replacementProgressBar = createProgressBar(new Color(0, 100, 0)),
                 replacementTimeLabel = createTimeLabel());
         progressPanel.add(replacementPanel);
 
+        // Создает панель для Bucket Sort
         JPanel bucketPanel = createAlgorithmPanel("Bucket Sort:",
                 bucketProgressBar = createProgressBar(new Color(150, 0, 150)),
                 bucketTimeLabel = createTimeLabel());
@@ -186,6 +229,7 @@ public class Coursework extends JFrame {
     }
 
     private JPanel createAlgorithmPanel(String title, JProgressBar progressBar, JLabel timeLabel) {
+        // Создает панель для отображения прогресса одного алгоритма
         JPanel panel = new JPanel(new BorderLayout(10, 5));
         panel.setBackground(Color.WHITE);
 
@@ -207,6 +251,7 @@ public class Coursework extends JFrame {
     }
 
     private JProgressBar createProgressBar(Color color) {
+        // Создает и настраивает прогресс-бар с заданным цветом
         JProgressBar progressBar = new JProgressBar(0, 100);
         progressBar.setStringPainted(true);
         progressBar.setForeground(color);
@@ -217,6 +262,7 @@ public class Coursework extends JFrame {
     }
 
     private JLabel createTimeLabel() {
+        // Создает метку для отображения времени выполнения алгоритма
         JLabel label = new JLabel("Время: не измерено");
         label.setFont(new Font("Arial", Font.PLAIN, 12));
         label.setForeground(new Color(100, 100, 100));
@@ -224,6 +270,7 @@ public class Coursework extends JFrame {
     }
 
     private void toggleSortingMode() {
+        // Переключает между параллельным и последовательным режимами
         parallelMode = !parallelMode;
         if (parallelMode) {
             modeButton.setText("Режим: ПАРАЛЛЕЛЬНЫЙ");
@@ -236,6 +283,7 @@ public class Coursework extends JFrame {
     }
 
     private void selectFile() {
+        // Открывает диалог выбора файла и сохраняет выбранный путь
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setDialogTitle("Выберите файл для сортировки");
         fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
@@ -253,6 +301,7 @@ public class Coursework extends JFrame {
     }
 
     private String getOutputFilePath(String suffix) {
+        // Генерирует путь для выходного файла на основе входного
         if (selectedFilePath == null) {
             return "sorted_" + suffix + ".txt";
         }
@@ -267,6 +316,7 @@ public class Coursework extends JFrame {
     }
 
     private void startSorting() {
+        // Запускает процесс сортировки выбранного файла
         if (isRunning || selectedFilePath == null) return;
 
         startButton.setEnabled(false);
@@ -274,8 +324,10 @@ public class Coursework extends JFrame {
         modeButton.setEnabled(false);
         isRunning = true;
 
+        // Сбрасывает все прогресс-бары и метки
         resetProgressBars();
 
+        // Обнуляет время выполнения алгоритмов
         oneWayTime = 0;
         kWayTime = 0;
         replacementTime = 0;
@@ -286,6 +338,7 @@ public class Coursework extends JFrame {
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
+                // Запускает сортировку в отдельном потоке
                 startTime = System.currentTimeMillis();
                 updateStatus("Запуск сортировок...");
 
@@ -300,6 +353,7 @@ public class Coursework extends JFrame {
 
             @Override
             protected void done() {
+                // Выполняется после завершения сортировки
                 long endTime = System.currentTimeMillis();
                 totalSortingTime = endTime - startTime;
 
@@ -309,8 +363,10 @@ public class Coursework extends JFrame {
                 modeButton.setEnabled(true);
                 updateStatus("Все сортировки завершены!");
 
+                // Обновляет отображение общего времени
                 totalTimeLabel.setText(String.format("Общее время: %.2f сек", totalSortingTime / 1000.0));
 
+                // Показывает результаты сортировки
                 showResults();
             }
         };
@@ -318,86 +374,75 @@ public class Coursework extends JFrame {
     }
 
     private void runParallelSorting() throws Exception {
+        // Запускает все алгоритмы сортировки параллельно
         updateStatus("Запуск ВСЕХ сортировок ПАРАЛЛЕЛЬНО...");
 
-        Callable<Long> oneWayTask = () -> {
-            long start = System.currentTimeMillis();
-            OneWayMergeSort.sort(selectedFilePath, getOutputFilePath("one_way"), Coursework.this);
-            return System.currentTimeMillis() - start;
-        };
+        ExecutorService executor = Executors.newFixedThreadPool(sortingAlgorithms.size());
+        List<Future<Long>> futures = new ArrayList<>();
 
-        Callable<Long> kWayTask = () -> {
-            long start = System.currentTimeMillis();
-            KWayMergeSort.sort(selectedFilePath, getOutputFilePath("k_way"), Coursework.this);
-            return System.currentTimeMillis() - start;
-        };
-
-        Callable<Long> replacementTask = () -> {
-            long start = System.currentTimeMillis();
-            ReplacementSelectionSort.sort(selectedFilePath, getOutputFilePath("replacement"), Coursework.this);
-            return System.currentTimeMillis() - start;
-        };
-
-        Callable<Long> bucketTask = () -> {
-            long start = System.currentTimeMillis();
-            BucketSort.sort(selectedFilePath, getOutputFilePath("bucket"), Coursework.this);
-            return System.currentTimeMillis() - start;
-        };
-
-        ExecutorService executor = Executors.newFixedThreadPool(4);
-        Future<Long> oneWayFuture = executor.submit(oneWayTask);
-        Future<Long> kWayFuture = executor.submit(kWayTask);
-        Future<Long> replacementFuture = executor.submit(replacementTask);
-        Future<Long> bucketFuture = executor.submit(bucketTask);
-
-        try {
-            oneWayTime = oneWayFuture.get();
-            updateOneWayTimeLabel();
-
-            kWayTime = kWayFuture.get();
-            updateKWayTimeLabel();
-
-            replacementTime = replacementFuture.get();
-            updateReplacementTimeLabel();
-
-            bucketTime = bucketFuture.get();
-            updateBucketTimeLabel();
-        } catch (Exception e) {
-            updateStatus("Ошибка при выполнении сортировок: " + e.getMessage());
-        } finally {
-            executor.shutdown();
+        // Создает задачи для каждого алгоритма
+        for (ExternalSortAlgorithm algorithm : sortingAlgorithms) {
+            Callable<Long> task = () -> {
+                long start = System.currentTimeMillis();
+                algorithm.sort(selectedFilePath, getOutputFilePath(algorithm.getAlgorithmId()), Coursework.this);
+                return System.currentTimeMillis() - start;
+            };
+            futures.add(executor.submit(task));
         }
+
+        // Собирает результаты выполнения алгоритмов
+        for (int i = 0; i < sortingAlgorithms.size(); i++) {
+            try {
+                long executionTime = futures.get(i).get();
+                updateAlgorithmTime(sortingAlgorithms.get(i), executionTime);
+            } catch (Exception e) {
+                updateStatus("Ошибка при выполнении " + sortingAlgorithms.get(i).getAlgorithmName() + ": " + e.getMessage());
+            }
+        }
+
+        executor.shutdown();
     }
 
     private void runSequentialSorting() throws Exception {
+        // Запускает алгоритмы сортировки последовательно один за другим
         updateStatus("Запуск сортировок ПОСЛЕДОВАТЕЛЬНО...");
 
-        updateStatus("Запуск One-Way Merge Sort...");
-        long oneWayStart = System.currentTimeMillis();
-        OneWayMergeSort.sort(selectedFilePath, getOutputFilePath("one_way"), Coursework.this);
-        oneWayTime = System.currentTimeMillis() - oneWayStart;
-        updateOneWayTimeLabel();
+        for (ExternalSortAlgorithm algorithm : sortingAlgorithms) {
+            updateStatus("Запуск " + algorithm.getAlgorithmName() + "...");
+            long startTime = System.currentTimeMillis();
 
-        updateStatus("Запуск K-Way Merge Sort...");
-        long kWayStart = System.currentTimeMillis();
-        KWayMergeSort.sort(selectedFilePath, getOutputFilePath("k_way"), Coursework.this);
-        kWayTime = System.currentTimeMillis() - kWayStart;
-        updateKWayTimeLabel();
+            // Выполняет сортировку текущим алгоритмом
+            algorithm.sort(selectedFilePath, getOutputFilePath(algorithm.getAlgorithmId()), this);
 
-        updateStatus("Запуск Replacement Selection Sort...");
-        long replacementStart = System.currentTimeMillis();
-        ReplacementSelectionSort.sort(selectedFilePath, getOutputFilePath("replacement"), Coursework.this);
-        replacementTime = System.currentTimeMillis() - replacementStart;
-        updateReplacementTimeLabel();
+            long endTime = System.currentTimeMillis();
+            updateAlgorithmTime(algorithm, endTime - startTime);
+        }
+    }
 
-        updateStatus("Запуск Bucket Sort...");
-        long bucketStart = System.currentTimeMillis();
-        BucketSort.sort(selectedFilePath, getOutputFilePath("bucket"), Coursework.this);
-        bucketTime = System.currentTimeMillis() - bucketStart;
-        updateBucketTimeLabel();
+    private void updateAlgorithmTime(ExternalSortAlgorithm algorithm, long time) {
+        // Обновляет время выполнения для конкретного алгоритма
+        switch (algorithm.getAlgorithmId()) {
+            case "one_way":
+                oneWayTime = time;
+                updateOneWayTimeLabel();
+                break;
+            case "k_way":
+                kWayTime = time;
+                updateKWayTimeLabel();
+                break;
+            case "replacement":
+                replacementTime = time;
+                updateReplacementTimeLabel();
+                break;
+            case "bucket":
+                bucketTime = time;
+                updateBucketTimeLabel();
+                break;
+        }
     }
 
     private void showResults() {
+        // Отображает диалоговое окно с результатами сортировки
         String results = String.format(
                 "Все сортировки успешно завершены!\n\n" +
                         "Общее время работы: %.2f секунд\n" +
@@ -423,6 +468,7 @@ public class Coursework extends JFrame {
     }
 
     private void resetProgressBars() {
+        // Сбрасывает значения всех прогресс-баров и меток времени
         oneWayProgressBar.setValue(0);
         kWayProgressBar.setValue(0);
         replacementProgressBar.setValue(0);
@@ -434,10 +480,12 @@ public class Coursework extends JFrame {
     }
 
     public void updateStatus(String status) {
+        // Обновляет текстовый статус в GUI
         SwingUtilities.invokeLater(() -> statusLabel.setText(status));
     }
 
     public void updateTimeLabel() {
+        // Обновляет метку текущего времени выполнения
         SwingUtilities.invokeLater(() -> {
             long elapsed = (System.currentTimeMillis() - startTime) / 1000;
             timeLabel.setText("Время: " + elapsed + " сек");
@@ -445,30 +493,35 @@ public class Coursework extends JFrame {
     }
 
     public void updateOneWayTimeLabel() {
+        // Обновляет метку времени для One-Way Merge Sort
         SwingUtilities.invokeLater(() -> {
             oneWayTimeLabel.setText(String.format("Время: %.2f сек", oneWayTime / 1000.0));
         });
     }
 
     public void updateKWayTimeLabel() {
+        // Обновляет метку времени для K-Way Merge Sort
         SwingUtilities.invokeLater(() -> {
             kWayTimeLabel.setText(String.format("Время: %.2f сек", kWayTime / 1000.0));
         });
     }
 
     public void updateReplacementTimeLabel() {
+        // Обновляет метку времени для Replacement Selection Sort
         SwingUtilities.invokeLater(() -> {
             replacementTimeLabel.setText(String.format("Время: %.2f сек", replacementTime / 1000.0));
         });
     }
 
     public void updateBucketTimeLabel() {
+        // Обновляет метку времени для Bucket Sort
         SwingUtilities.invokeLater(() -> {
             bucketTimeLabel.setText(String.format("Время: %.2f сек", bucketTime / 1000.0));
         });
     }
 
     public void updateOneWayProgress(int value, String status) {
+        // Обновляет прогресс-бар и статус для One-Way Merge Sort
         SwingUtilities.invokeLater(() -> {
             oneWayProgressBar.setValue(value);
             if (status != null) {
@@ -479,10 +532,12 @@ public class Coursework extends JFrame {
     }
 
     public void updateOneWayProgress(int value) {
+        // Обновляет только прогресс-бар для One-Way Merge Sort
         updateOneWayProgress(value, null);
     }
 
     public void updateKWayProgress(int value, String status) {
+        // Обновляет прогресс-бар и статус для K-Way Merge Sort
         SwingUtilities.invokeLater(() -> {
             kWayProgressBar.setValue(value);
             if (status != null) {
@@ -493,10 +548,12 @@ public class Coursework extends JFrame {
     }
 
     public void updateKWayProgress(int value) {
+        // Обновляет только прогресс-бар для K-Way Merge Sort
         updateKWayProgress(value, null);
     }
 
     public void updateReplacementProgress(int value, String status) {
+        // Обновляет прогресс-бар и статус для Replacement Selection Sort
         SwingUtilities.invokeLater(() -> {
             replacementProgressBar.setValue(value);
             if (status != null) {
@@ -507,10 +564,12 @@ public class Coursework extends JFrame {
     }
 
     public void updateReplacementProgress(int value) {
+        // Обновляет только прогресс-бар для Replacement Selection Sort
         updateReplacementProgress(value, null);
     }
 
     public void updateBucketProgress(int value, String status) {
+        // Обновляет прогресс-бар и статус для Bucket Sort
         SwingUtilities.invokeLater(() -> {
             bucketProgressBar.setValue(value);
             if (status != null) {
@@ -521,16 +580,19 @@ public class Coursework extends JFrame {
     }
 
     public void updateBucketProgress(int value) {
+        // Обновляет только прогресс-бар для Bucket Sort
         updateBucketProgress(value, null);
     }
 
     public static void main(String[] args) {
+        // Проверяет настройки памяти и запускает приложение
         checkMemorySettings();
 
         SwingUtilities.invokeLater(() -> new Coursework());
     }
 
     private static void checkMemorySettings() {
+        // Проверяет доступную память и выводит предупреждение при недостатке
         Runtime runtime = Runtime.getRuntime();
         long maxMemory = runtime.maxMemory() / (1024 * 1024);
         long totalMemory = runtime.totalMemory() / (1024 * 1024);
