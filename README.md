@@ -24,12 +24,9 @@
 
 2. **Запустите приложение с увеличенной памятью (рекомендуется):**
     ```bash
-    java -Xmx4g Coursework
+    java -Xms8g -Xmx12g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 Coursework
     ```
 
-   *Для очень больших файлов можно увеличить лимит памяти:*
-    ```bash
-    java -Xmx8g Coursework
     ```
 
 ## Использование
